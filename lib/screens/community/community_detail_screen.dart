@@ -12,6 +12,7 @@ import '../../widgets/post_card.dart';
 import '../../widgets/comments_bottom_sheet.dart';
 import '../../widgets/auth_prompt_bottom_sheet.dart';
 import '../posts/create_post_screen.dart';
+import 'edit_community_screen.dart';
 
 class CommunityDetailScreen extends StatefulWidget {
   final String communityId;
@@ -182,6 +183,9 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen>
     }
 
     if (_community == null) return;
+    if (_community!.isUserOwner(authProvider.user?.id)) {
+      return; // Community owner cannot leave their circle
+    }
 
     final commProvider = Provider.of<CommunityProvider>(context, listen: false);
     final nextJoined = !_community!.isJoined;
@@ -206,6 +210,228 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen>
       debugPrint('Join toggle error: $e');
       _fetchCommunityDetail();
     }
+  }
+
+  void _handleChangeMemberRole(CommunityMember member, String newRole) async {
+    try {
+      await _apiService.changeMemberRole(widget.communityId, member.userId, newRole);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(newRole == 'moderator'
+                ? 'Made @${member.username} a Moderator'
+                : 'Demoted @${member.username} to Member'),
+          ),
+        );
+        _fetchCommunityMembers();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update member role.'), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
+  void _showBanMemberDialog(CommunityMember member) {
+    final reasonController = TextEditingController(text: 'Violating community guidelines');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.block_rounded, color: AppColors.error, size: 22),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Ban @${member.username}?',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'This user will be removed from the circle and prevented from re-joining or posting.',
+              style: TextStyle(fontSize: 13, color: AppColors.onSurfaceVariant),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(
+                labelText: 'Ban Reason',
+                hintText: 'e.g. Inappropriate behavior or spam',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              final reason = reasonController.text.trim();
+              Navigator.pop(ctx);
+              try {
+                await _apiService.banMember(
+                  widget.communityId,
+                  member.userId,
+                  reason.isNotEmpty ? reason : 'Violating community guidelines',
+                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Banned @${member.username} from circle.')),
+                  );
+                  _fetchCommunityMembers();
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Failed to ban member.'), backgroundColor: AppColors.error),
+                  );
+                }
+              }
+            },
+            child: const Text('Ban Member'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddRuleDialog() {
+    final titleController = TextEditingController();
+    final descController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.gavel_rounded, color: AppColors.primary, size: 22),
+            SizedBox(width: 8),
+            Text('Add Community Rule', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              decoration: const InputDecoration(
+                labelText: 'Rule Title *',
+                hintText: 'e.g. Respect all members',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: descController,
+              decoration: const InputDecoration(
+                labelText: 'Rule Description',
+                hintText: 'Explain the rule and expectations...',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              final title = titleController.text.trim();
+              if (title.isEmpty) return;
+              Navigator.pop(ctx);
+              try {
+                await _apiService.createCommunityRule(
+                  widget.communityId,
+                  title,
+                  descController.text.trim(),
+                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Rule added successfully.')),
+                  );
+                  _fetchCommunityRules();
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Failed to add rule.'), backgroundColor: AppColors.error),
+                  );
+                }
+              }
+            },
+            child: const Text('Save Rule'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteRule(CommunityRule rule) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Rule?', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Text('Are you sure you want to remove the rule "${rule.title}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await _apiService.deleteCommunityRule(widget.communityId, rule.id);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Rule removed.')),
+                  );
+                  _fetchCommunityRules();
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Failed to delete rule.'), backgroundColor: AppColors.error),
+                  );
+                }
+              }
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _createPostInCircle() async {
@@ -248,9 +474,26 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen>
     });
   }
 
+  void _openEditCommunity(Community community) async {
+    final updated = await Navigator.push<Community>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditCommunityScreen(community: community),
+      ),
+    );
+    if (updated != null && mounted) {
+      setState(() {
+        _community = updated;
+      });
+      _loadAllData();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final comm = _community;
+    final authProvider = Provider.of<AuthProvider>(context);
+    final isOwner = comm != null && comm.isUserOwner(authProvider.user?.id);
 
     return Scaffold(
       appBar: AppBar(
@@ -259,6 +502,12 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen>
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
+          if (isOwner)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Edit Community',
+              onPressed: () => _openEditCommunity(comm),
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadAllData,
@@ -381,26 +630,82 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen>
                 ),
               ),
 
-              // Join Button on Banner Right
+              // Join Button / Owner Badge on Banner Right
               Positioned(
                 right: 16,
                 bottom: 8,
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: comm.isJoined ? Colors.transparent : AppColors.primaryContainer,
-                    foregroundColor: comm.isJoined ? AppColors.onSurface : AppColors.onPrimaryContainer,
-                    side: BorderSide(
-                      color: comm.isJoined ? AppColors.surfaceContainerHigh : AppColors.primaryContainer,
-                    ),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-                  ),
-                  onPressed: _handleJoinToggle,
-                  child: Text(
-                    comm.isJoined ? 'Joined' : 'Join Circle',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  ),
-                ),
+                child: comm.isUserOwner(Provider.of<AuthProvider>(context, listen: false).user?.id)
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          InkWell(
+                            onTap: () => _openEditCommunity(comm),
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.edit_outlined, size: 13, color: Colors.white),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Edit',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: AppColors.outline.withValues(alpha: 0.25)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.shield_outlined, size: 13, color: AppColors.primary),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Owner',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                    color: AppColors.onSurface,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      )
+                    : OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: comm.isJoined ? Colors.transparent : AppColors.primaryContainer,
+                          foregroundColor: comm.isJoined ? AppColors.onSurface : AppColors.onPrimaryContainer,
+                          side: BorderSide(
+                            color: comm.isJoined ? AppColors.surfaceContainerHigh : AppColors.primaryContainer,
+                          ),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                        ),
+                        onPressed: _handleJoinToggle,
+                        child: Text(
+                          comm.isJoined ? 'Joined' : 'Join Circle',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
               ),
             ],
           ),
@@ -651,7 +956,7 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen>
                 _toggleLocalPostLike(post.id);
               },
               onBookmark: () {
-                postProvider.toggleBookmark(post.id);
+                postProvider.toggleBookmark(post.id, isCurrentlyBookmarked: post.isBookmarked);
                 _toggleLocalPostBookmark(post.id);
               },
               onComment: () {
@@ -679,14 +984,26 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen>
       );
     }
 
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUserId = authProvider.user?.id;
+    final isViewerOwner = _community?.isUserOwner(currentUserId) ?? false;
+    final isViewerMod = _community?.isUserModerator(currentUserId) ?? false;
+
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: _members.length,
       separatorBuilder: (_, _) => const Divider(height: 1, color: AppColors.surfaceContainerHigh),
       itemBuilder: (context, index) {
         final member = _members[index];
-        final isOwner = member.role.toLowerCase() == 'owner';
-        final isMod = member.role.toLowerCase() == 'moderator';
+        final isMemberOwner = member.role.toLowerCase() == 'owner';
+        final isMemberMod = member.role.toLowerCase() == 'moderator';
+        final isSelf = member.userId == currentUserId;
+
+        // Owner can manage non-owners. Moderator can ban regular members (not owner, not fellow mods).
+        final canManage = !isSelf && (
+          (isViewerOwner && !isMemberOwner) ||
+          (isViewerMod && !isViewerOwner && !isMemberOwner && !isMemberMod)
+        );
 
         return ListTile(
           contentPadding: const EdgeInsets.symmetric(vertical: 4),
@@ -704,24 +1021,27 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen>
           ),
           title: Row(
             children: [
-              Text(
-                member.fullName ?? member.username,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              Expanded(
+                child: Text(
+                  member.fullName ?? member.username,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              if (isOwner || isMod) ...[
+              if (isMemberOwner || isMemberMod) ...[
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                   decoration: BoxDecoration(
-                    color: isOwner ? Colors.amber.withValues(alpha: 0.2) : Colors.blue.withValues(alpha: 0.2),
+                    color: isMemberOwner ? Colors.amber.withValues(alpha: 0.2) : Colors.blue.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    isOwner ? 'Owner' : 'Mod',
+                    isMemberOwner ? 'Owner' : 'Mod',
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
-                      color: isOwner ? Colors.amber.shade900 : Colors.blue.shade900,
+                      color: isMemberOwner ? Colors.amber.shade900 : Colors.blue.shade900,
                     ),
                   ),
                 ),
@@ -732,21 +1052,106 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen>
             '@${member.username}',
             style: const TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
           ),
+          trailing: canManage
+              ? PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, size: 20, color: AppColors.outline),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  elevation: 6,
+                  onSelected: (action) {
+                    if (action == 'make_mod') {
+                      _handleChangeMemberRole(member, 'moderator');
+                    } else if (action == 'demote_mod') {
+                      _handleChangeMemberRole(member, 'member');
+                    } else if (action == 'ban') {
+                      _showBanMemberDialog(member);
+                    }
+                  },
+                  itemBuilder: (ctx) => [
+                    if (isViewerOwner && !isMemberMod)
+                      const PopupMenuItem<String>(
+                        value: 'make_mod',
+                        child: Row(
+                          children: [
+                            Icon(Icons.shield_outlined, color: Colors.blue, size: 18),
+                            SizedBox(width: 10),
+                            Text(
+                              'Make Moderator',
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (isViewerOwner && isMemberMod)
+                      const PopupMenuItem<String>(
+                        value: 'demote_mod',
+                        child: Row(
+                          children: [
+                            Icon(Icons.remove_moderator_outlined, color: AppColors.outline, size: 18),
+                            SizedBox(width: 10),
+                            Text(
+                              'Demote to Member',
+                              style: TextStyle(
+                                color: AppColors.onSurface,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const PopupMenuItem<String>(
+                      value: 'ban',
+                      child: Row(
+                        children: [
+                          Icon(Icons.block_rounded, color: AppColors.error, size: 18),
+                          SizedBox(width: 10),
+                          Text(
+                            'Ban from Community',
+                            style: TextStyle(
+                              color: AppColors.error,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                )
+              : null,
         );
       },
     );
   }
 
   Widget _buildAboutAndRulesTab(Community comm) {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final isOwner = comm.isUserOwner(authProvider.user?.id);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // About Section
-          const Text(
-            'About Circle',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'About Circle',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              if (isOwner)
+                TextButton.icon(
+                  onPressed: () => _openEditCommunity(comm),
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('Edit Details'),
+                ),
+            ],
           ),
           const SizedBox(height: 8),
           Text(
@@ -755,15 +1160,39 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen>
           ),
           const SizedBox(height: 24),
 
-          // Community Rules Section
-          const Text(
-            'Community Rules',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Following these rules keeps the circle helpful, welcoming, and safe.',
-            style: TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
+          // Community Rules Section Header
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Community Rules',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Following these rules keeps the circle helpful and safe.',
+                    style: TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
+                  ),
+                ],
+              ),
+              if (isOwner)
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    side: const BorderSide(color: AppColors.primary),
+                  ),
+                  onPressed: _showAddRuleDialog,
+                  icon: const Icon(Icons.add, size: 16, color: AppColors.primary),
+                  label: const Text(
+                    'Add Rule',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 12),
 
@@ -837,6 +1266,12 @@ class _CommunityDetailScreenState extends State<CommunityDetailScreen>
                         ],
                       ),
                     ),
+                    if (isOwner)
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.error),
+                        tooltip: 'Delete rule',
+                        onPressed: () => _confirmDeleteRule(rule),
+                      ),
                   ],
                 ),
               );

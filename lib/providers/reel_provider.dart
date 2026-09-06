@@ -70,6 +70,8 @@ class ReelProvider extends ChangeNotifier {
         }
       } catch (e) {
         debugPrint('Reel bookmark API error: $e');
+        _reels[index] = reel;
+        notifyListeners();
       }
     }
   }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/community_model.dart';
+import '../providers/auth_provider.dart';
 import '../theme/app_theme.dart';
 
 class CommunityCard extends StatelessWidget {
@@ -18,6 +20,8 @@ class CommunityCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final imageUri = community.coverImageUrl ?? community.iconUrl;
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final isOwner = community.isUserOwner(authProvider.user?.id);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -147,27 +151,52 @@ class CommunityCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
 
-              // Join / Joined Button
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: community.isJoined ? Colors.transparent : AppColors.primaryContainer,
-                  foregroundColor: community.isJoined ? AppColors.onSurface : AppColors.onPrimaryContainer,
-                  side: BorderSide(
-                    color: community.isJoined ? AppColors.surfaceContainerHigh : AppColors.primaryContainer,
+              // Action: Owner badge or Join Button
+              if (isOwner)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.outline.withValues(alpha: 0.2)),
                   ),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  minimumSize: const Size(64, 34),
-                ),
-                onPressed: onJoinToggle,
-                child: Text(
-                  community.isJoined ? 'Joined' : 'Join',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.shield_outlined, size: 13, color: AppColors.primary),
+                      SizedBox(width: 4),
+                      Text(
+                        'Owner',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: community.isJoined ? Colors.transparent : AppColors.primaryContainer,
+                    foregroundColor: community.isJoined ? AppColors.onSurface : AppColors.onPrimaryContainer,
+                    side: BorderSide(
+                      color: community.isJoined ? AppColors.surfaceContainerHigh : AppColors.primaryContainer,
+                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    minimumSize: const Size(64, 34),
+                  ),
+                  onPressed: onJoinToggle,
+                  child: Text(
+                    community.isJoined ? 'Joined' : 'Join',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ),

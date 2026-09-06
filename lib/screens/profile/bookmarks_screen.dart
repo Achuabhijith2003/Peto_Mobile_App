@@ -110,7 +110,7 @@ class _BookmarksScreenState extends State<BookmarksScreen> {
                           }
                         },
                         onBookmark: () {
-                          postProvider.toggleBookmark(post.id);
+                          postProvider.toggleBookmark(post.id, isCurrentlyBookmarked: post.isBookmarked);
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: const Text('Post removed from saved'),

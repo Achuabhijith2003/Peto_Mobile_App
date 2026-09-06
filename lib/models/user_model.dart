@@ -56,6 +56,7 @@ class User {
   final int postsCount;
   final int followersCount;
   final int followingCount;
+  final bool isFollowing;
 
   User({
     required this.id,
@@ -68,6 +69,7 @@ class User {
     this.postsCount = 0,
     this.followersCount = 0,
     this.followingCount = 0,
+    this.isFollowing = false,
   });
 
   String get displayName =>
@@ -106,6 +108,9 @@ class User {
       followingCount: json['following_count'] is int
           ? json['following_count']
           : int.tryParse(json['following_count']?.toString() ?? '0') ?? 0,
+      isFollowing: json['isFollowing'] == true ||
+          json['is_following'] == true ||
+          json['following'] == true,
     );
   }
 
@@ -121,6 +126,7 @@ class User {
       'posts_count': postsCount,
       'followers_count': followersCount,
       'following_count': followingCount,
+      'is_following': isFollowing,
     };
   }
 
@@ -133,6 +139,7 @@ class User {
     int? postsCount,
     int? followersCount,
     int? followingCount,
+    bool? isFollowing,
   }) {
     return User(
       id: id,
@@ -145,6 +152,7 @@ class User {
       postsCount: postsCount ?? this.postsCount,
       followersCount: followersCount ?? this.followersCount,
       followingCount: followingCount ?? this.followingCount,
+      isFollowing: isFollowing ?? this.isFollowing,
     );
   }
 }

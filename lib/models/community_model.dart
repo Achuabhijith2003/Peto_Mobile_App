@@ -102,12 +102,28 @@ class Community {
   String? get bannerUrl => coverImageUrl;
 
   bool get isPrivate => visibility.toLowerCase() == 'private';
-  bool get isOwner => viewerRole == 'owner';
-  bool get isModerator => viewerRole == 'moderator' || isOwner;
+  bool get isOwner => viewerRole?.toLowerCase() == 'owner';
+  bool get isModerator => viewerRole?.toLowerCase() == 'moderator' || isOwner;
+
+  bool isUserOwner(String? currentUserId) {
+    if (isOwner) return true;
+    if (currentUserId != null && ownerId != null && ownerId == currentUserId) {
+      return true;
+    }
+    return false;
+  }
+
+  bool isUserModerator(String? currentUserId) {
+    return isModerator || isUserOwner(currentUserId);
+  }
 
   factory Community.fromJson(Map<String, dynamic> json) {
     final viewer = json['viewer'] is Map<String, dynamic> ? json['viewer'] as Map<String, dynamic> : null;
-    final isMember = viewer != null ? viewer['is_member'] == true : (json['is_joined'] == true);
+    final ownerIdStr = json['owner_id']?.toString() ??
+        (json['owner'] is Map<String, dynamic> ? json['owner']['id']?.toString() : null);
+    final role = viewer?['role']?.toString();
+    final isRoleOwner = role?.toLowerCase() == 'owner';
+    final isMember = isRoleOwner || (viewer != null ? viewer['is_member'] == true : (json['is_joined'] == true));
 
     var rulesList = <CommunityRule>[];
     if (json['rules'] is List) {
@@ -133,36 +149,44 @@ class Community {
           ? json['post_count']
           : int.tryParse(json['post_count']?.toString() ?? '0') ?? 0,
       isJoined: isMember,
-      ownerId: json['owner_id']?.toString(),
-      viewerRole: viewer?['role']?.toString(),
+      ownerId: ownerIdStr,
+      viewerRole: role,
       viewerStatus: viewer?['status']?.toString(),
       rules: rulesList,
     );
   }
 
   Community copyWith({
+    String? name,
+    String? slug,
+    String? description,
+    String? category,
+    String? coverImageUrl,
+    String? iconUrl,
+    String? visibility,
     bool? isJoined,
     int? memberCount,
     int? postCount,
     String? viewerRole,
     String? viewerStatus,
+    List<CommunityRule>? rules,
   }) {
     return Community(
       id: id,
-      name: name,
-      slug: slug,
-      description: description,
-      category: category,
-      coverImageUrl: coverImageUrl,
-      iconUrl: iconUrl,
-      visibility: visibility,
+      name: name ?? this.name,
+      slug: slug ?? this.slug,
+      description: description ?? this.description,
+      category: category ?? this.category,
+      coverImageUrl: coverImageUrl ?? this.coverImageUrl,
+      iconUrl: iconUrl ?? this.iconUrl,
+      visibility: visibility ?? this.visibility,
       memberCount: memberCount ?? this.memberCount,
       postCount: postCount ?? this.postCount,
       isJoined: isJoined ?? this.isJoined,
       ownerId: ownerId,
       viewerRole: viewerRole ?? this.viewerRole,
       viewerStatus: viewerStatus ?? this.viewerStatus,
-      rules: rules,
+      rules: rules ?? this.rules,
     );
   }
 }

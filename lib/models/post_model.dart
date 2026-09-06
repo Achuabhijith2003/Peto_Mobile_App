@@ -6,13 +6,36 @@ class PostMedia {
 
   PostMedia({required this.url, this.type = 'image'});
 
+  static String sanitizeUrl(String rawUrl) {
+    return rawUrl
+        .replaceAll('/posts-images/posts-images/', '/posts-images/')
+        .replaceAll('/posts-videos/posts-videos/', '/posts-videos/');
+  }
+
+  static bool isVideoUrl(String url, {String? type}) {
+    if (type?.toLowerCase() == 'video') return true;
+    final lower = url.toLowerCase();
+    if (lower.contains('/posts-videos/')) return true;
+    return RegExp(r'\.(mp4|webm|mov|mkv|avi)(\?.*)?$', caseSensitive: false).hasMatch(lower);
+  }
+
+  bool get isVideo => isVideoUrl(url, type: type);
+
   factory PostMedia.fromJson(dynamic json) {
     if (json is String) {
-      return PostMedia(url: json);
+      final sanitized = sanitizeUrl(json);
+      final inferredType = isVideoUrl(sanitized) ? 'video' : 'image';
+      return PostMedia(url: sanitized, type: inferredType);
     } else if (json is Map<String, dynamic>) {
+      final rawUrl = json['url']?.toString() ?? json['path']?.toString() ?? '';
+      final sanitized = sanitizeUrl(rawUrl);
+      var mediaType = json['type']?.toString();
+      if (mediaType == null || mediaType.isEmpty) {
+        mediaType = isVideoUrl(sanitized) ? 'video' : 'image';
+      }
       return PostMedia(
-        url: json['url']?.toString() ?? '',
-        type: json['type']?.toString() ?? 'image',
+        url: sanitized,
+        type: mediaType,
       );
     }
     return PostMedia(url: '');
@@ -97,8 +120,10 @@ class Post {
           .map((m) => PostMedia.fromJson(m))
           .where((m) => m.url.isNotEmpty)
           .toList();
-    } else if (json['media_url'] != null) {
-      mediaList = [PostMedia(url: json['media_url'].toString())];
+    } else if (json['media_url'] != null && json['media_url'].toString().isNotEmpty) {
+      mediaList = [PostMedia.fromJson(json['media_url'])];
+    } else if (json['video_url'] != null && json['video_url'].toString().isNotEmpty) {
+      mediaList = [PostMedia.fromJson(json['video_url'])];
     }
 
     User authorUser;

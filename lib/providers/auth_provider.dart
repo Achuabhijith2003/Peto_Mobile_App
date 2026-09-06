@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
@@ -96,8 +97,8 @@ class AuthProvider extends ChangeNotifier {
       });
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        final token = response.data['token'];
-        final refreshToken = response.data['refreshToken'];
+        final token = response.data['token'] ?? response.data['session']?['access_token'];
+        final refreshToken = response.data['refreshToken'] ?? response.data['session']?['refresh_token'];
         final userData = response.data['user'] ?? response.data;
 
         if (token != null) {
@@ -106,16 +107,23 @@ class AuthProvider extends ChangeNotifier {
             await _storageService.saveRefreshToken(refreshToken);
           }
 
-          _user = User.fromJson(userData);
-          await _storageService.saveUserData(jsonEncode(_user!.toJson()));
+          if (userData != null && userData is Map<String, dynamic>) {
+            _user = User.fromJson(userData);
+            await _storageService.saveUserData(jsonEncode(_user!.toJson()));
+          }
           _isLoading = false;
           notifyListeners();
           return true;
         }
+        // If session token was not returned (e.g. signup created user but requires login or next step), still consider signup successful
+        _isLoading = false;
+        notifyListeners();
+        return true;
       }
       _errorMessage = response.data['message'] ?? 'Registration failed';
     } catch (e) {
-      _errorMessage = 'Error creating account. Please try again.';
+      debugPrint('Register error: $e');
+      _errorMessage = 'Error creating account. Please check your details and try again.';
     }
 
     _isLoading = false;
@@ -183,5 +191,34 @@ class AuthProvider extends ChangeNotifier {
       debugPrint('Update profile error: $e');
     }
     return false;
+  }
+
+  Future<Map<String, dynamic>> forgotPassword(String email, {String? redirectTo}) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final response = await _apiService.forgotPassword(email.trim(), redirectTo: redirectTo);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final message = response.data['message'] ??
+            'Password reset link has been sent to your email address.';
+        return {'success': true, 'message': message};
+      }
+      final msg = response.data['message'] ?? 'Failed to send reset email';
+      _errorMessage = msg;
+      return {'success': false, 'message': msg};
+    } catch (e) {
+      debugPrint('Forgot password error: $e');
+      String msg = 'Failed to send reset link. Please check your email.';
+      if (e is DioException && e.response?.data != null && e.response?.data['message'] != null) {
+        msg = e.response!.data['message'].toString();
+      }
+      _errorMessage = msg;
+      return {'success': false, 'message': msg};
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 }

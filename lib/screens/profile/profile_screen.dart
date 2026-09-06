@@ -14,6 +14,7 @@ import '../../widgets/auth_prompt_bottom_sheet.dart';
 import '../posts/create_post_screen.dart';
 import 'edit_profile_screen.dart';
 import 'bookmarks_screen.dart';
+import 'followers_following_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -30,6 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isGridView = false;
   int _followersCount = 0;
   int _followingCount = 0;
+  String? _loadedUserId;
 
   @override
   void initState() {
@@ -37,6 +39,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadProfileData();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final authProvider = Provider.of<AuthProvider>(context);
+    if (authProvider.isAuthenticated && authProvider.user != null) {
+      final userId = authProvider.user!.id;
+      if (_loadedUserId != userId) {
+        _loadedUserId = userId;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _loadProfileData();
+        });
+      }
+    } else if (!authProvider.isAuthenticated && !authProvider.isLoading) {
+      _loadedUserId = null;
+    }
   }
 
   Future<void> _loadProfileData() async {
@@ -116,7 +135,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 },
                 onBookmark: () {
                   final postProvider = Provider.of<PostProvider>(context, listen: false);
-                  postProvider.toggleBookmark(post.id);
+                  postProvider.toggleBookmark(post.id, isCurrentlyBookmarked: post.isBookmarked);
                   _toggleLocalPostBookmark(post.id);
                 },
                 onComment: () {
@@ -160,6 +179,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
+
+    if (authProvider.isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.primaryContainer),
+        ),
+      );
+    }
 
     if (!authProvider.isAuthenticated) {
       return Scaffold(
@@ -430,8 +457,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
                           _buildStatItem('Posts', _userPosts.length),
-                          _buildStatItem('Followers', _followersCount),
-                          _buildStatItem('Following', _followingCount),
+                          _buildStatItem(
+                            'Followers',
+                            _followersCount,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => FollowersFollowingScreen(
+                                    userId: user.id,
+                                    username: user.username,
+                                    initialIndex: 0,
+                                  ),
+                                ),
+                              ).then((_) => _loadProfileData());
+                            },
+                          ),
+                          _buildStatItem(
+                            'Following',
+                            _followingCount,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => FollowersFollowingScreen(
+                                    userId: user.id,
+                                    username: user.username,
+                                    initialIndex: 1,
+                                  ),
+                                ),
+                              ).then((_) => _loadProfileData());
+                            },
+                          ),
                         ],
                       ),
                     ),
@@ -544,8 +601,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildStatItem(String label, int count) {
-    return Column(
+  Widget _buildStatItem(String label, int count, {VoidCallback? onTap}) {
+    final item = Column(
       children: [
         Text(
           '$count',
@@ -566,6 +623,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ],
     );
+
+    if (onTap != null) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          child: item,
+        ),
+      );
+    }
+    return item;
   }
 
   Widget _buildPostsGrid() {
@@ -654,7 +723,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _toggleLocalPostLike(post.id);
           },
           onBookmark: () {
-            postProvider.toggleBookmark(post.id);
+            postProvider.toggleBookmark(post.id, isCurrentlyBookmarked: post.isBookmarked);
             _toggleLocalPostBookmark(post.id);
           },
           onComment: () {

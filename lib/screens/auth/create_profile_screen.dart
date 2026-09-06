@@ -1,14 +1,24 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/media_upload_helper.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
+import 'login_screen.dart';
 
 class CreateProfileScreen extends StatefulWidget {
-  const CreateProfileScreen({super.key});
+  final String? prefilledUsername;
+  final String? prefilledEmail;
+
+  const CreateProfileScreen({
+    super.key,
+    this.prefilledUsername,
+    this.prefilledEmail,
+  });
 
   @override
   State<CreateProfileScreen> createState() => _CreateProfileScreenState();
@@ -24,6 +34,9 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
   final _phoneController = TextEditingController();
   final _avatarUrlController = TextEditingController();
 
+  String? _avatarLocalPath;
+  String? _avatarUrl;
+  bool _isUploadingAvatar = false;
   DateTime? _selectedDateOfBirth;
   bool _isLoading = false;
 
@@ -31,10 +44,8 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
   void initState() {
     super.initState();
     final user = Provider.of<AuthProvider>(context, listen: false).user;
-    if (user != null) {
-      _usernameController.text = user.username;
-      _fullNameController.text = user.fullName ?? '';
-    }
+    _usernameController.text = widget.prefilledUsername ?? user?.username ?? '';
+    _fullNameController.text = user?.fullName ?? '';
   }
 
   @override
@@ -47,6 +58,27 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     _phoneController.dispose();
     _avatarUrlController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickAndUploadAvatar() async {
+    setState(() => _isUploadingAvatar = true);
+
+    final result = await MediaUploadHelper.showPickerAndUpload(
+      context,
+      allowVideo: false,
+      title: 'Upload Profile Photo',
+    );
+
+    if (mounted) {
+      setState(() {
+        _isUploadingAvatar = false;
+        if (result != null && result.uploadedUrl != null) {
+          _avatarLocalPath = result.localPath;
+          _avatarUrl = result.uploadedUrl;
+          _avatarUrlController.text = result.uploadedUrl!;
+        }
+      });
+    }
   }
 
   Future<void> _pickDateOfBirth() async {
@@ -68,6 +100,8 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     setState(() => _isLoading = true);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
+    final effectiveAvatar = _avatarUrl ?? _avatarUrlController.text.trim();
+
     final profileData = {
       'fullName': _fullNameController.text.trim(),
       'username': _usernameController.text.trim().toLowerCase(),
@@ -75,8 +109,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
       'location': _locationController.text.trim(),
       'website': _websiteController.text.trim(),
       'phone': _phoneController.text.trim(),
-      if (_avatarUrlController.text.trim().isNotEmpty)
-        'avatar_url': _avatarUrlController.text.trim(),
+      if (effectiveAvatar.isNotEmpty) 'avatar_url': effectiveAvatar,
       if (_selectedDateOfBirth != null)
         'dateOfBirth': DateFormat('yyyy-MM-dd').format(_selectedDateOfBirth!),
     };
@@ -85,7 +118,20 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     if (mounted) {
       setState(() => _isLoading = false);
       if (success) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        // Move to login screen as requested
+        await authProvider.logout();
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (_) => LoginScreen(
+                initialEmail: widget.prefilledEmail,
+                successMessage: 'Profile completed successfully! Please sign in to continue.',
+              ),
+            ),
+            (route) => false,
+          );
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -97,13 +143,26 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     }
   }
 
-  void _skipForNow() {
-    Navigator.of(context).popUntil((route) => route.isFirst);
+  void _skipForNow() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    await authProvider.logout();
+    if (mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => LoginScreen(
+            initialEmail: widget.prefilledEmail,
+            successMessage: 'Account created! Please sign in to continue.',
+          ),
+        ),
+        (route) => false,
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final avatarPreview = _avatarUrlController.text.trim();
+    final effectiveAvatar = _avatarUrl ?? _avatarUrlController.text.trim();
 
     return Scaffold(
       appBar: AppBar(
@@ -111,7 +170,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
         actions: [
           TextButton(
             onPressed: _skipForNow,
-            child: const Text('Skip', style: TextStyle(color: AppColors.outline)),
+            child: const Text('Skip', style: TextStyle(color: AppColors.outline, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -123,21 +182,33 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Header Icon / Greeting
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryFixed,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Icon(
-                    Icons.pets_rounded,
-                    size: 36,
-                    color: AppColors.primary,
+                // Step Indicator Badge
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.secondaryContainer.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.looks_two_rounded, size: 16, color: AppColors.secondary),
+                        SizedBox(width: 6),
+                        Text(
+                          'Step 2 of 2 • Profile Details',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.secondary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
+
                 const Text(
                   'Complete Your Profile',
                   style: TextStyle(
@@ -158,18 +229,74 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Avatar Preview
-                CircleAvatar(
-                  radius: 46,
-                  backgroundColor: AppColors.primaryFixed,
-                  backgroundImage: avatarPreview.isNotEmpty
-                      ? CachedNetworkImageProvider(avatarPreview)
-                      : null,
-                  child: avatarPreview.isEmpty
-                      ? const Icon(Icons.person, size: 48, color: AppColors.primary)
-                      : null,
+                // Interactive Avatar with Camera Upload Badge
+                Center(
+                  child: GestureDetector(
+                    onTap: _isUploadingAvatar ? null : _pickAndUploadAvatar,
+                    child: Stack(
+                      children: [
+                        Container(
+                          width: 100,
+                          height: 100,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.primaryFixed,
+                            border: Border.all(color: AppColors.primary, width: 2),
+                          ),
+                          child: ClipOval(
+                            child: _isUploadingAvatar
+                                ? const Center(
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                                  )
+                                : (_avatarLocalPath != null && File(_avatarLocalPath!).existsSync())
+                                    ? Image.file(
+                                        File(_avatarLocalPath!),
+                                        fit: BoxFit.cover,
+                                        width: 100,
+                                        height: 100,
+                                      )
+                                    : effectiveAvatar.isNotEmpty
+                                        ? CachedNetworkImage(
+                                            imageUrl: effectiveAvatar,
+                                            fit: BoxFit.cover,
+                                            width: 100,
+                                            height: 100,
+                                            placeholder: (_, _) => const Center(
+                                              child: CircularProgressIndicator(strokeWidth: 2),
+                                            ),
+                                            errorWidget: (_, _, _) => const Icon(Icons.pets, size: 48, color: AppColors.primary),
+                                          )
+                                        : const Icon(Icons.pets_rounded, size: 48, color: AppColors.primary),
+                          ),
+                        ),
+                        // Camera upload icon badge
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                            child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: _isUploadingAvatar ? null : _pickAndUploadAvatar,
+                  icon: const Icon(Icons.photo_library_outlined, size: 16),
+                  label: Text(
+                    effectiveAvatar.isNotEmpty ? 'Change Profile Photo' : 'Upload Profile Photo',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ),
+                const SizedBox(height: 16),
 
                 // Full Name
                 CustomTextField(
@@ -201,20 +328,10 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Avatar URL
-                CustomTextField(
-                  label: 'Avatar Photo URL (Optional)',
-                  hint: 'https://images.unsplash.com/...',
-                  controller: _avatarUrlController,
-                  prefixIcon: const Icon(Icons.image_outlined, color: AppColors.outline),
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 16),
-
                 // Bio
                 CustomTextField(
                   label: 'Bio',
-                  hint: 'Pet mom to 2 golden retrievers. Passionate about animal rescue & pet care...',
+                  hint: 'Pet parent to 2 golden retrievers. Passionate about animal rescue & pet care...',
                   controller: _bioController,
                   prefixIcon: const Icon(Icons.description_outlined, color: AppColors.outline),
                   maxLines: 3,
@@ -285,9 +402,9 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // Submit Button
+                // Submit Button -> Moves to Login Screen
                 CustomButton(
-                  text: 'Save & Continue',
+                  text: 'Save & Go to Sign In',
                   width: double.infinity,
                   isLoading: _isLoading,
                   onPressed: _handleSubmit,
@@ -297,8 +414,8 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                 TextButton(
                   onPressed: _skipForNow,
                   child: const Text(
-                    'I\'ll do this later',
-                    style: TextStyle(color: AppColors.outline),
+                    'Skip & Sign In',
+                    style: TextStyle(color: AppColors.outline, fontWeight: FontWeight.bold),
                   ),
                 ),
                 const SizedBox(height: 24),

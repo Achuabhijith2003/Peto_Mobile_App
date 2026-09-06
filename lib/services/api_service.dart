@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'storage_service.dart';
 
@@ -12,8 +14,8 @@ class ApiService {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl ?? defaultBaseUrl,
-        connectTimeout: const Duration(seconds: 10),
-        receiveTimeout: const Duration(seconds: 10),
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(seconds: 30),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -27,6 +29,11 @@ class ApiService {
           final token = await _storageService.getToken();
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
+          }
+          if (options.data is FormData) {
+            // Remove Content-Type header so Dio calculates boundary automatically
+            options.headers.remove('Content-Type');
+            options.headers.remove('content-type');
           }
           return handler.next(options);
         },
@@ -120,9 +127,18 @@ class ApiService {
     return await _dio.post('/auth/signup', data: {
       'email': data['email'],
       'password': data['password'],
-      'fullName': data['username'] ?? data['fullName'] ?? '',
-      'full_name': data['username'] ?? data['full_name'] ?? '',
+      'username': data['username'],
+      'fullName': data['fullName'] ?? data['username'] ?? '',
+      'full_name': data['full_name'] ?? data['username'] ?? '',
     });
+  }
+
+  Future<Response> forgotPassword(String email, {String? redirectTo}) async {
+    final Map<String, dynamic> data = {'email': email};
+    if (redirectTo != null) {
+      data['redirectTo'] = redirectTo;
+    }
+    return await _dio.post('/auth/forgot-password', data: data);
   }
 
   // ----------------------
@@ -178,9 +194,10 @@ class ApiService {
   // ----------------------
   // POSTS API (/api/posts)
   // ----------------------
-  Future<Response> getPosts({int page = 1, String? category}) async {
+  Future<Response> getPosts({int page = 1, int limit = 7, String? category}) async {
     return await _dio.get('/posts/feed', queryParameters: {
       'page': page,
+      'limit': limit,
       'category': ?category,
     });
   }
@@ -239,18 +256,18 @@ class ApiService {
   }
 
   // ----------------------
-  // BOOKMARKS API (/api/my/bookmarks & /api/posts/:id/bookmark)
+  // BOOKMARKS API (/api/my/bookmarks & /api/my/posts/:id/bookmark)
   // ----------------------
   Future<Response> getBookmarks() async {
     return await _dio.get('/my/bookmarks');
   }
 
   Future<Response> bookmarkPost(String postId) async {
-    return await _dio.post('/posts/$postId/bookmark');
+    return await _dio.post('/my/posts/$postId/bookmark');
   }
 
   Future<Response> removeBookmark(String postId) async {
-    return await _dio.delete('/posts/$postId/bookmark');
+    return await _dio.delete('/my/posts/$postId/bookmark');
   }
 
   // ----------------------
@@ -298,12 +315,44 @@ class ApiService {
     return await _dio.post('/communities', data: data);
   }
 
+  Future<Response> updateCommunity(String id, Map<String, dynamic> data) async {
+    return await _dio.patch('/communities/$id', data: data);
+  }
+
   Future<Response> joinCommunity(String id) async {
     return await _dio.post('/communities/$id/join');
   }
 
   Future<Response> leaveCommunity(String id) async {
     return await _dio.delete('/communities/$id/membership');
+  }
+
+  Future<Response> changeMemberRole(String communityId, String targetUserId, String role) async {
+    return await _dio.patch('/communities/$communityId/members/$targetUserId/role', data: {
+      'role': role,
+    });
+  }
+
+  Future<Response> banMember(String communityId, String targetUserId, String reason) async {
+    return await _dio.post('/communities/$communityId/bans', data: {
+      'user_id': targetUserId,
+      'reason': reason,
+    });
+  }
+
+  Future<Response> unbanMember(String communityId, String targetUserId) async {
+    return await _dio.delete('/communities/$communityId/bans/$targetUserId');
+  }
+
+  Future<Response> createCommunityRule(String communityId, String title, String description) async {
+    return await _dio.post('/communities/$communityId/rules', data: {
+      'title': title,
+      'description': description,
+    });
+  }
+
+  Future<Response> deleteCommunityRule(String communityId, String ruleId) async {
+    return await _dio.delete('/communities/$communityId/rules/$ruleId');
   }
 
   // ----------------------
@@ -316,4 +365,125 @@ class ApiService {
   Future<Response> markAllNotificationsRead() async {
     return await _dio.patch('/notifications/read-all');
   }
+
+  // ----------------------
+  // MEDIA UPLOAD API (/api/media/upload)
+  // ----------------------
+  static DioMediaType _resolveMediaType(String pathOrName) {
+    final lower = pathOrName.toLowerCase();
+    if (lower.endsWith('.png')) return DioMediaType('image', 'png');
+    if (lower.endsWith('.webp')) return DioMediaType('image', 'webp');
+    if (lower.endsWith('.gif')) return DioMediaType('image', 'gif');
+    if (lower.endsWith('.mp4')) return DioMediaType('video', 'mp4');
+    if (lower.endsWith('.mov')) return DioMediaType('video', 'quicktime');
+    if (lower.endsWith('.avi')) return DioMediaType('video', 'x-msvideo');
+    if (lower.endsWith('.mkv')) return DioMediaType('video', 'x-matroska');
+    if (lower.endsWith('.webm')) return DioMediaType('video', 'webm');
+    return DioMediaType('image', 'jpeg');
+  }
+
+  Future<MediaUploadResult> uploadMediaFile(
+    String filePath, {
+    String? fileName,
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    try {
+      final token = await _storageService.getToken();
+      if (token == null || token.isEmpty) {
+        return MediaUploadResult(
+          success: false,
+          errorMessage: 'Please log in to upload media.',
+        );
+      }
+
+      final file = File(filePath);
+      if (!await file.exists()) {
+        return MediaUploadResult(
+          success: false,
+          errorMessage: 'Selected file could not be found.',
+        );
+      }
+
+      final name = fileName ?? filePath.split('/').last.split('\\').last;
+      final mediaType = _resolveMediaType(name);
+
+      final multipartFile = await MultipartFile.fromFile(
+        filePath,
+        filename: name,
+        contentType: mediaType,
+      );
+
+      final formData = FormData();
+      formData.files.add(MapEntry('media', multipartFile));
+
+      final response = await _dio.post(
+        '/media/upload',
+        data: formData,
+        onSendProgress: onProgress,
+        options: Options(
+          sendTimeout: const Duration(minutes: 5),
+          receiveTimeout: const Duration(minutes: 5),
+        ),
+      );
+
+      if ((response.statusCode == 200 || response.statusCode == 201) && response.data != null) {
+        final data = response.data;
+        final mediaUrl = data['mediaUrl'] ??
+            data['url'] ??
+            (data['data'] is List && (data['data'] as List).isNotEmpty
+                ? ((data['data'] as List).first is Map
+                    ? ((data['data'] as List).first['url'] ?? (data['data'] as List).first['path'])
+                    : (data['data'] as List).first)
+                : (data['data'] is Map ? (data['data']['url'] ?? data['data']['path']) : null));
+
+        if (mediaUrl != null && mediaUrl.toString().isNotEmpty) {
+          return MediaUploadResult(
+            success: true,
+            mediaUrl: mediaUrl.toString(),
+          );
+        }
+      }
+
+      final msg = response.data is Map ? response.data['message'] : null;
+      return MediaUploadResult(
+        success: false,
+        errorMessage: msg?.toString() ?? 'Server rejected the file upload.',
+      );
+    } catch (e) {
+      String message = 'Upload failed';
+      if (e is DioException) {
+        debugPrint('Upload media DioException: [${e.response?.statusCode}] ${e.response?.data}');
+        if (e.response?.statusCode == 401) {
+          message = 'Session expired. Please log in again.';
+        } else if (e.response?.statusCode == 413) {
+          message = 'File size is too large (max 30MB images, 200MB videos).';
+        } else if (e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.sendTimeout ||
+            e.type == DioExceptionType.receiveTimeout) {
+          message = 'Connection timed out while uploading. Please try again.';
+        } else if (e.response?.data is Map && e.response?.data['message'] != null) {
+          message = e.response!.data['message'].toString();
+        }
+      } else {
+        debugPrint('Upload media error: $e');
+      }
+      return MediaUploadResult(
+        success: false,
+        errorMessage: message,
+      );
+    }
+  }
 }
+
+class MediaUploadResult {
+  final bool success;
+  final String? mediaUrl;
+  final String? errorMessage;
+
+  MediaUploadResult({
+    required this.success,
+    this.mediaUrl,
+    this.errorMessage,
+  });
+}
+

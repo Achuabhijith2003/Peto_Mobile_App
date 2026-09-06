@@ -8,33 +8,84 @@ class PostProvider extends ChangeNotifier {
   List<Post> _posts = [];
   List<Post> _bookmarkedPosts = [];
   bool _isLoading = false;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  int _currentPage = 1;
+  static const int _limit = 7;
   bool _isLoadingBookmarks = false;
   String? _selectedCategory;
 
   List<Post> get posts => _posts;
   List<Post> get bookmarkedPosts => _bookmarkedPosts;
   bool get isLoading => _isLoading;
+  bool get isLoadingMore => _isLoadingMore;
+  bool get hasMore => _hasMore;
+  int get currentPage => _currentPage;
   bool get isLoadingBookmarks => _isLoadingBookmarks;
   String? get selectedCategory => _selectedCategory;
 
-  Future<void> fetchPosts({String? category}) async {
+  Future<void> fetchPosts({String? category, bool refresh = false}) async {
     _isLoading = true;
+    _currentPage = 1;
+    _hasMore = true;
     _selectedCategory = category;
     notifyListeners();
 
     try {
-      final response = await _apiService.getPosts(category: category);
+      final response = await _apiService.getPosts(page: 1, limit: _limit, category: category);
       if (response.statusCode == 200 && response.data != null) {
         final List rawList = response.data['posts'] ?? response.data['data'] ?? response.data ?? [];
         _posts = rawList.map((item) => Post.fromJson(item)).toList();
+        if (rawList.length < _limit) {
+          _hasMore = false;
+        }
       } else {
         _posts = [];
+        _hasMore = false;
       }
     } catch (e) {
       debugPrint('Fetch posts API error: $e');
       _posts = [];
+      _hasMore = false;
     } finally {
       _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> fetchMorePosts() async {
+    if (_isLoading || _isLoadingMore || !_hasMore) return;
+
+    _isLoadingMore = true;
+    notifyListeners();
+
+    final nextPage = _currentPage + 1;
+
+    try {
+      final response = await _apiService.getPosts(
+        page: nextPage,
+        limit: _limit,
+        category: _selectedCategory,
+      );
+      if (response.statusCode == 200 && response.data != null) {
+        final List rawList = response.data['posts'] ?? response.data['data'] ?? response.data ?? [];
+        final List<Post> newPosts = rawList.map((item) => Post.fromJson(item)).toList();
+
+        final existingIds = _posts.map((p) => p.id).toSet();
+        final uniqueNew = newPosts.where((p) => !existingIds.contains(p.id)).toList();
+        _posts.addAll(uniqueNew);
+
+        _currentPage = nextPage;
+        if (newPosts.length < _limit) {
+          _hasMore = false;
+        }
+      } else {
+        _hasMore = false;
+      }
+    } catch (e) {
+      debugPrint('Fetch more posts API error: $e');
+    } finally {
+      _isLoadingMore = false;
       notifyListeners();
     }
   }
@@ -60,16 +111,25 @@ class PostProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> createPost(String content, {String? mediaUrl, String? communityId}) async {
+  Future<bool> createPost(String content, {List<String>? mediaUrls, String? mediaUrl, String? communityId}) async {
     try {
+      final List<String> allMedia = [];
+      if (mediaUrls != null && mediaUrls.isNotEmpty) {
+        allMedia.addAll(mediaUrls);
+      } else if (mediaUrl != null && mediaUrl.isNotEmpty) {
+        allMedia.add(mediaUrl);
+      }
+
       final response = await _apiService.createPost({
         'content': content,
-        'media_url': ?(mediaUrl != null && mediaUrl.isNotEmpty ? mediaUrl : null),
-        'community_id': ?communityId,
+        'text': content,
+        'media': allMedia,
+        'media_url': allMedia.isNotEmpty ? allMedia.first : null,
+        'community_id': communityId,
       });
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        await fetchPosts(category: _selectedCategory);
+        await fetchPosts(category: _selectedCategory, refresh: true);
         return true;
       }
     } catch (e) {
@@ -117,14 +177,22 @@ class PostProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> toggleBookmark(String postId) async {
+  Future<void> toggleBookmark(String postId, {bool? isCurrentlyBookmarked}) async {
     final postIndex = _posts.indexWhere((p) => p.id == postId);
     final bookmarkIndex = _bookmarkedPosts.indexWhere((p) => p.id == postId);
 
-    if (postIndex == -1 && bookmarkIndex == -1) return;
+    bool currentBookmarked;
+    if (isCurrentlyBookmarked != null) {
+      currentBookmarked = isCurrentlyBookmarked;
+    } else if (postIndex != -1) {
+      currentBookmarked = _posts[postIndex].isBookmarked;
+    } else if (bookmarkIndex != -1) {
+      currentBookmarked = _bookmarkedPosts[bookmarkIndex].isBookmarked;
+    } else {
+      currentBookmarked = false;
+    }
 
-    final target = postIndex != -1 ? _posts[postIndex] : _bookmarkedPosts[bookmarkIndex];
-    final newBookmarked = !target.isBookmarked;
+    final newBookmarked = !currentBookmarked;
 
     if (postIndex != -1) {
       _posts[postIndex] = _posts[postIndex].copyWith(isBookmarked: newBookmarked);
@@ -132,7 +200,9 @@ class PostProvider extends ChangeNotifier {
 
     if (newBookmarked) {
       if (!_bookmarkedPosts.any((p) => p.id == postId)) {
-        _bookmarkedPosts.insert(0, (postIndex != -1 ? _posts[postIndex] : target).copyWith(isBookmarked: true));
+        if (postIndex != -1) {
+          _bookmarkedPosts.insert(0, _posts[postIndex]);
+        }
       }
     } else {
       _bookmarkedPosts.removeWhere((p) => p.id == postId);
@@ -149,11 +219,11 @@ class PostProvider extends ChangeNotifier {
       debugPrint('Toggle bookmark API error: $e');
       // Revert on error
       if (postIndex != -1) {
-        _posts[postIndex] = target;
+        _posts[postIndex] = _posts[postIndex].copyWith(isBookmarked: currentBookmarked);
       }
-      if (target.isBookmarked) {
-        if (!_bookmarkedPosts.any((p) => p.id == postId)) {
-          _bookmarkedPosts.add(target);
+      if (currentBookmarked) {
+        if (postIndex != -1 && !_bookmarkedPosts.any((p) => p.id == postId)) {
+          _bookmarkedPosts.insert(0, _posts[postIndex]);
         }
       } else {
         _bookmarkedPosts.removeWhere((p) => p.id == postId);

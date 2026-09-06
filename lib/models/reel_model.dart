@@ -21,16 +21,67 @@ class Reel {
     this.isBookmarked = false,
   });
 
+  static String sanitizeUrl(String rawUrl) {
+    return rawUrl
+        .replaceAll('/posts-images/posts-images/', '/posts-images/')
+        .replaceAll('/posts-videos/posts-videos/', '/posts-videos/');
+  }
+
+  static bool isVideoUrl(String url) {
+    if (url.isEmpty) return false;
+    final lower = url.toLowerCase();
+    if (lower.contains('/posts-videos/')) return true;
+    if (lower.contains('/video/') || lower.contains('/videos/')) return true;
+    return RegExp(r'\.(mp4|webm|mov|mkv|avi|m4v)(\?.*)?$', caseSensitive: false).hasMatch(lower);
+  }
+
   factory Reel.fromJson(Map<String, dynamic> json) {
-    String mediaUrl = json['media_url']?.toString() ?? json['video_url']?.toString() ?? '';
-    if (mediaUrl.isEmpty && json['media'] is List && (json['media'] as List).isNotEmpty) {
-      final firstMedia = (json['media'] as List).first;
-      if (firstMedia is Map) {
-        mediaUrl = firstMedia['url']?.toString() ?? '';
-      } else if (firstMedia is String) {
-        mediaUrl = firstMedia;
+    String mediaUrl = '';
+
+    if (json['media'] is List && (json['media'] as List).isNotEmpty) {
+      final mediaList = json['media'] as List;
+      dynamic videoItem;
+
+      for (final m in mediaList) {
+        if (m is Map) {
+          if (m['type']?.toString().toLowerCase() == 'video') {
+            videoItem = m;
+            break;
+          }
+          final u = m['url']?.toString() ?? m['path']?.toString() ?? m['src']?.toString() ?? '';
+          if (isVideoUrl(u)) {
+            videoItem = m;
+            break;
+          }
+        } else if (m is String && isVideoUrl(m)) {
+          videoItem = m;
+          break;
+        }
+      }
+
+      if (videoItem != null) {
+        if (videoItem is Map) {
+          mediaUrl = videoItem['url']?.toString() ?? videoItem['path']?.toString() ?? videoItem['src']?.toString() ?? '';
+        } else if (videoItem is String) {
+          mediaUrl = videoItem;
+        }
       }
     }
+
+    if (mediaUrl.isEmpty) {
+      mediaUrl = json['video_url']?.toString() ?? json['media_url']?.toString() ?? '';
+    }
+
+    if (mediaUrl.isEmpty && json['media'] is List && (json['media'] as List).isNotEmpty) {
+      final first = (json['media'] as List).first;
+      if (first is Map) {
+        mediaUrl = first['url']?.toString() ?? first['path']?.toString() ?? first['src']?.toString() ?? '';
+      } else if (first is String) {
+        mediaUrl = first;
+      }
+    }
+
+    mediaUrl = sanitizeUrl(mediaUrl);
 
     User authorUser;
     if (json['author'] != null && json['author'] is Map<String, dynamic>) {

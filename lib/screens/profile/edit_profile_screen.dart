@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/media_upload_helper.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
@@ -28,12 +30,57 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _avatarUrlController;
   late TextEditingController _coverUrlController;
 
+  String? _localAvatarPath;
+  String? _localCoverPath;
+  bool _isUploadingAvatar = false;
+  bool _isUploadingCover = false;
+
   String _originalUsername = '';
   DateTime? _selectedDateOfBirth;
   bool _isSaving = false;
   bool _isCheckingUsername = false;
   String? _usernameFeedback;
   bool? _isUsernameAvailable;
+
+  void _pickAvatar() async {
+    setState(() => _isUploadingAvatar = true);
+    final res = await MediaUploadHelper.showPickerAndUpload(
+      context,
+      allowVideo: false,
+      title: 'Upload Profile Avatar',
+    );
+    if (mounted) {
+      setState(() {
+        _isUploadingAvatar = false;
+        if (res != null) {
+          _localAvatarPath = res.localPath;
+          if (res.uploadedUrl != null) {
+            _avatarUrlController.text = res.uploadedUrl!;
+          }
+        }
+      });
+    }
+  }
+
+  void _pickCover() async {
+    setState(() => _isUploadingCover = true);
+    final res = await MediaUploadHelper.showPickerAndUpload(
+      context,
+      allowVideo: false,
+      title: 'Upload Cover Photo',
+    );
+    if (mounted) {
+      setState(() {
+        _isUploadingCover = false;
+        if (res != null) {
+          _localCoverPath = res.localPath;
+          if (res.uploadedUrl != null) {
+            _coverUrlController.text = res.uploadedUrl!;
+          }
+        }
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -226,14 +273,57 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       decoration: const BoxDecoration(
                         color: AppColors.surfaceContainerLow,
                       ),
-                      child: coverPreview.isNotEmpty
-                          ? CachedNetworkImage(
-                              imageUrl: coverPreview,
+                      child: (_localCoverPath != null && File(_localCoverPath!).existsSync())
+                          ? Image.file(
+                              File(_localCoverPath!),
                               fit: BoxFit.cover,
-                              placeholder: (_, _) => Container(color: AppColors.surfaceContainerLow),
-                              errorWidget: (_, _, _) => _buildCoverFallback(),
+                              width: double.infinity,
+                              height: 140,
                             )
-                          : _buildCoverFallback(),
+                          : coverPreview.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: coverPreview,
+                                  fit: BoxFit.cover,
+                                  placeholder: (_, _) => Container(color: AppColors.surfaceContainerLow),
+                                  errorWidget: (_, _, _) => _buildCoverFallback(),
+                                )
+                              : _buildCoverFallback(),
+                    ),
+
+                    // Change Cover Button (Top/Bottom Right on Cover)
+                    Positioned(
+                      right: 16,
+                      bottom: 12,
+                      child: InkWell(
+                        onTap: _isUploadingCover ? null : _pickCover,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.65),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white24),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_isUploadingCover)
+                                const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              else
+                                const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 16),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'Upload Cover',
+                                style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
 
                     // Avatar Overlap
@@ -257,12 +347,39 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             child: CircleAvatar(
                               radius: 44,
                               backgroundColor: AppColors.primaryFixed,
-                              backgroundImage: avatarPreview.isNotEmpty
-                                  ? CachedNetworkImageProvider(avatarPreview)
-                                  : null,
-                              child: avatarPreview.isEmpty
+                              backgroundImage: (_localAvatarPath != null && File(_localAvatarPath!).existsSync())
+                                  ? FileImage(File(_localAvatarPath!))
+                                  : avatarPreview.isNotEmpty
+                                      ? CachedNetworkImageProvider(avatarPreview)
+                                      : null,
+                              child: (_localAvatarPath == null && avatarPreview.isEmpty)
                                   ? const Icon(Icons.person, size: 44, color: AppColors.primary)
                                   : null,
+                            ),
+                          ),
+
+                          // Camera upload badge on Avatar
+                          Positioned(
+                            bottom: 2,
+                            right: 2,
+                            child: InkWell(
+                              onTap: _isUploadingAvatar ? null : _pickAvatar,
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: AppColors.surface, width: 2.5),
+                                ),
+                                child: _isUploadingAvatar
+                                    ? const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                      )
+                                    : const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 16),
+                              ),
                             ),
                           ),
                         ],
@@ -279,23 +396,40 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Avatar Image URL Field
-                    CustomTextField(
-                      label: 'Avatar Image URL',
-                      hint: 'https://images.unsplash.com/...',
-                      controller: _avatarUrlController,
-                      prefixIcon: const Icon(Icons.camera_alt_outlined, color: AppColors.outline),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Cover Image URL Field
-                    CustomTextField(
-                      label: 'Cover Image URL',
-                      hint: 'https://images.unsplash.com/...',
-                      controller: _coverUrlController,
-                      prefixIcon: const Icon(Icons.panorama_outlined, color: AppColors.outline),
-                      onChanged: (_) => setState(() {}),
+                    // Media Upload Quick Action Row
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isUploadingAvatar ? null : _pickAvatar,
+                              icon: const Icon(Icons.account_circle_outlined, size: 18),
+                              label: const Text('Change Avatar'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.primary,
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _isUploadingCover ? null : _pickCover,
+                              icon: const Icon(Icons.panorama_outlined, size: 18),
+                              label: const Text('Change Cover'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.primary,
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 20),
 

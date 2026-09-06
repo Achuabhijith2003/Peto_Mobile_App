@@ -4,6 +4,9 @@ import 'package:intl/intl.dart';
 import '../models/post_model.dart';
 import '../theme/app_theme.dart';
 import 'comments_bottom_sheet.dart';
+import 'post_video_player.dart';
+import '../models/reel_model.dart';
+import '../screens/reels/reels_screen.dart';
 
 class PostCard extends StatelessWidget {
   final Post post;
@@ -122,30 +125,59 @@ class PostCard extends StatelessWidget {
                 ),
               ],
 
-              // Media attachment
+              // Media attachment (single or multi-media carousel)
               if (post.media.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: CachedNetworkImage(
-                    imageUrl: post.media.first.url,
-                    width: double.infinity,
-                    height: 220,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      height: 220,
-                      color: AppColors.surfaceContainerLow,
-                      child: const Center(
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                if (post.media.length == 1)
+                  if (post.media.first.isVideo)
+                    PostVideoPlayer(
+                      videoUrl: post.media.first.url,
+                      videoId: post.id,
+                      onTapVideo: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ReelsScreen(
+                              initialReel: Reel(
+                                id: post.id,
+                                mediaUrl: post.media.first.url,
+                                caption: post.content,
+                                author: post.author,
+                                likesCount: post.likesCount,
+                                commentsCount: post.commentsCount,
+                                isLiked: post.isLiked,
+                                isBookmarked: post.isBookmarked,
+                              ),
+                              showBackButton: true,
+                            ),
+                          ),
+                        );
+                      },
+                    )
+                  else
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: CachedNetworkImage(
+                        imageUrl: post.media.first.url,
+                        width: double.infinity,
+                        height: 220,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          height: 220,
+                          color: AppColors.surfaceContainerLow,
+                          child: const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          height: 160,
+                          color: AppColors.surfaceContainerLow,
+                          child: const Icon(Icons.pets, size: 40, color: AppColors.outline),
+                        ),
                       ),
-                    ),
-                    errorWidget: (context, url, error) => Container(
-                      height: 160,
-                      color: AppColors.surfaceContainerLow,
-                      child: const Icon(Icons.pets, size: 40, color: AppColors.outline),
-                    ),
-                  ),
-                ),
+                    )
+                else
+                  _PostMediaCarousel(media: post.media, post: post),
               ],
 
               const SizedBox(height: 12),
@@ -228,3 +260,123 @@ class PostCard extends StatelessWidget {
     );
   }
 }
+
+class _PostMediaCarousel extends StatefulWidget {
+  final List<PostMedia> media;
+  final Post post;
+
+  const _PostMediaCarousel({required this.media, required this.post});
+
+  @override
+  State<_PostMediaCarousel> createState() => _PostMediaCarouselState();
+}
+
+class _PostMediaCarouselState extends State<_PostMediaCarousel> {
+  int _currentIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        SizedBox(
+          height: 260,
+          child: Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: PageView.builder(
+                  itemCount: widget.media.length,
+                  onPageChanged: (idx) => setState(() => _currentIndex = idx),
+                  itemBuilder: (context, index) {
+                    final item = widget.media[index];
+                    if (item.isVideo) {
+                      return PostVideoPlayer(
+                        videoUrl: item.url,
+                        videoId: '${widget.post.id}_$index',
+                        onTapVideo: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ReelsScreen(
+                                initialReel: Reel(
+                                  id: widget.post.id,
+                                  mediaUrl: item.url,
+                                  caption: widget.post.content,
+                                  author: widget.post.author,
+                                  likesCount: widget.post.likesCount,
+                                  commentsCount: widget.post.commentsCount,
+                                  isLiked: widget.post.isLiked,
+                                  isBookmarked: widget.post.isBookmarked,
+                                ),
+                                showBackButton: true,
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    }
+                    return CachedNetworkImage(
+                      imageUrl: item.url,
+                      width: double.infinity,
+                      height: 260,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(
+                        color: AppColors.surfaceContainerLow,
+                        child: const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        color: AppColors.surfaceContainerLow,
+                        child: const Icon(Icons.pets, size: 40, color: AppColors.outline),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Positioned(
+                top: 10,
+                right: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.65),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${_currentIndex + 1}/${widget.media.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(
+            widget.media.length,
+            (idx) => AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: _currentIndex == idx ? 16 : 6,
+              height: 6,
+              margin: const EdgeInsets.symmetric(horizontal: 2.5),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(3),
+                color: _currentIndex == idx
+                    ? AppColors.primary
+                    : AppColors.outline.withValues(alpha: 0.3),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
