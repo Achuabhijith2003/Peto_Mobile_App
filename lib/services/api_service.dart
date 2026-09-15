@@ -7,6 +7,8 @@ class ApiService {
   // 10.0.2.2 targets localhost from Android Emulator
   static const String defaultBaseUrl = 'https://peto-web.onrender.com/api';
   
+  static Function(String?)? onMaintenanceDetected;
+
   late final Dio _dio;
   final StorageService _storageService = StorageService();
 
@@ -38,6 +40,18 @@ class ApiService {
           return handler.next(options);
         },
         onError: (DioException error, handler) async {
+          // Detect Controlled Maintenance Mode (HTTP 503)
+          if (error.response?.statusCode == 503) {
+            final data = error.response?.data;
+            final isMaintenance = data is Map &&
+                (data['maintenance'] == true ||
+                    data['message']?.toString().toLowerCase().contains('maintenance') == true);
+            if (isMaintenance) {
+              final msg = data['message']?.toString();
+              onMaintenanceDetected?.call(msg);
+            }
+          }
+
           if (error.response?.statusCode == 401 &&
               !error.requestOptions.path.contains('/auth/login') &&
               !error.requestOptions.path.contains('/auth/signup') &&
@@ -97,17 +111,23 @@ class ApiService {
         final isOk = data['success'] == true && data['status'] == 'OK';
         return {
           'isHealthy': isOk,
-          'message': isOk ? 'API Server OK' : 'API status degraded',
+          'status': data['status']?.toString() ?? (isOk ? 'OK' : 'DEGRADED'),
+          'maintenance': data['maintenance'] == true || data['status'] == 'MAINTENANCE',
+          'message': data['message']?.toString() ?? (isOk ? 'API Server OK' : 'Scheduled maintenance underway'),
           'timestamp': data['timestamp'],
         };
       }
       return {
         'isHealthy': false,
+        'status': 'ERROR',
+        'maintenance': false,
         'message': 'API returned HTTP ${response.statusCode}',
       };
     } catch (e) {
       return {
         'isHealthy': false,
+        'status': 'OFFLINE',
+        'maintenance': false,
         'message': 'Unable to connect to https://peto-web.onrender.com',
       };
     }
@@ -358,33 +378,66 @@ class ApiService {
   // ----------------------
   // NOTIFICATIONS API (/api/notifications)
   // ----------------------
-  Future<Response> getNotifications() async {
-    return await _dio.get('/notifications');
+  Future<Response> getNotifications({int page = 1, int limit = 20}) async {
+    return await _dio.get('/notifications', queryParameters: {
+      'page': page,
+      'limit': limit,
+    });
+  }
+
+  Future<Response> getUnreadNotificationCount() async {
+    return await _dio.get('/notifications/unread-count');
+  }
+
+  Future<Response> markNotificationRead(String id) async {
+    return await _dio.patch('/notifications/$id/read');
   }
 
   Future<Response> markAllNotificationsRead() async {
     return await _dio.patch('/notifications/read-all');
   }
 
+  Future<Response> deleteNotification(String id) async {
+    return await _dio.delete('/notifications/$id');
+  }
+
+  Future<Response> getNotificationSettings() async {
+    return await _dio.get('/notifications/settings');
+  }
+
+  Future<Response> updateNotificationSettings(Map<String, dynamic> data) async {
+    return await _dio.put('/notifications/settings', data: data);
+  }
+
   // ----------------------
   // MEDIA UPLOAD API (/api/media/upload)
   // ----------------------
-  static DioMediaType _resolveMediaType(String pathOrName) {
+  static DioMediaType _resolveMediaType(String pathOrName, {bool? isVideo}) {
     final lower = pathOrName.toLowerCase();
     if (lower.endsWith('.png')) return DioMediaType('image', 'png');
     if (lower.endsWith('.webp')) return DioMediaType('image', 'webp');
     if (lower.endsWith('.gif')) return DioMediaType('image', 'gif');
+    if (lower.endsWith('.heic')) return DioMediaType('image', 'heic');
+    if (lower.endsWith('.heif')) return DioMediaType('image', 'heif');
     if (lower.endsWith('.mp4')) return DioMediaType('video', 'mp4');
     if (lower.endsWith('.mov')) return DioMediaType('video', 'quicktime');
     if (lower.endsWith('.avi')) return DioMediaType('video', 'x-msvideo');
     if (lower.endsWith('.mkv')) return DioMediaType('video', 'x-matroska');
     if (lower.endsWith('.webm')) return DioMediaType('video', 'webm');
+    if (lower.endsWith('.3gp')) return DioMediaType('video', '3gpp');
+    if (lower.endsWith('.m4v')) return DioMediaType('video', 'x-m4v');
+    if (lower.endsWith('.ts')) return DioMediaType('video', 'mp2t');
+
+    if (isVideo == true) {
+      return DioMediaType('video', 'mp4');
+    }
     return DioMediaType('image', 'jpeg');
   }
 
   Future<MediaUploadResult> uploadMediaFile(
     String filePath, {
     String? fileName,
+    bool isVideo = false,
     void Function(int sent, int total)? onProgress,
   }) async {
     try {
@@ -405,7 +458,7 @@ class ApiService {
       }
 
       final name = fileName ?? filePath.split('/').last.split('\\').last;
-      final mediaType = _resolveMediaType(name);
+      final mediaType = _resolveMediaType(name, isVideo: isVideo);
 
       final multipartFile = await MultipartFile.fromFile(
         filePath,
@@ -472,6 +525,88 @@ class ApiService {
         errorMessage: message,
       );
     }
+  }
+
+  Future<Map<String, dynamic>> createReport({
+    required String targetType,
+    required String targetId,
+    required String reason,
+    String? description,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/reports',
+        data: {
+          'target_type': targetType,
+          'target_id': targetId,
+          'reason': reason,
+          if (description != null && description.trim().isNotEmpty)
+            'description': description.trim(),
+        },
+      );
+      return {
+        'success': true,
+        'message': response.data['message'] ?? 'Report submitted successfully.',
+        'data': response.data['data'],
+      };
+    } on DioException catch (e) {
+      final resData = e.response?.data;
+      String errMsg = 'Failed to submit report. Please try again.';
+      if (resData is Map && resData['message'] != null) {
+        errMsg = resData['message'].toString();
+      }
+      return {
+        'success': false,
+        'message': errMsg,
+        'statusCode': e.response?.statusCode,
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': e.toString(),
+      };
+    }
+  }
+
+  /// Fetch active sponsored advertisements for feeds
+  Future<List<Map<String, dynamic>>> fetchFeedAds({String placement = 'FEED'}) async {
+    try {
+      final response = await _dio.get(
+        '/ads/feed',
+        queryParameters: {'placement': placement},
+      );
+      if (response.statusCode == 200 && response.data != null) {
+        final List<dynamic>? adsList = response.data['ads'];
+        if (adsList != null) {
+          return List<Map<String, dynamic>>.from(
+            adsList.whereType<Map>().map((e) => Map<String, dynamic>.from(e)),
+          );
+        }
+      }
+    } catch (_) {
+      // Non-blocking fallback
+    }
+    return [];
+  }
+
+  /// Track ad impression
+  Future<void> trackAdImpression(String campaignId, {String? creativeId}) async {
+    try {
+      await _dio.post(
+        '/ads/$campaignId/impression',
+        data: {'creativeId': creativeId},
+      );
+    } catch (_) {}
+  }
+
+  /// Track ad click
+  Future<void> trackAdClick(String campaignId, {String? creativeId}) async {
+    try {
+      await _dio.post(
+        '/ads/$campaignId/click',
+        data: {'creativeId': creativeId},
+      );
+    } catch (_) {}
   }
 }
 

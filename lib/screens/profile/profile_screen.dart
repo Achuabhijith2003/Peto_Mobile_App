@@ -9,6 +9,7 @@ import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/post_card.dart';
+import '../../widgets/sponsored_post_card.dart';
 import '../../widgets/comments_bottom_sheet.dart';
 import '../../widgets/auth_prompt_bottom_sheet.dart';
 import '../posts/create_post_screen.dart';
@@ -27,6 +28,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final ApiService _apiService = ApiService();
 
   List<Post> _userPosts = [];
+  List<Map<String, dynamic>> _profileAds = [];
   bool _isLoadingPosts = false;
   bool _isGridView = false;
   int _followersCount = 0;
@@ -75,6 +77,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _apiService.getFollowers(user.id).catchError((_) => _apiService.getCurrentUser()),
         _apiService.getFollowing(user.id).catchError((_) => _apiService.getCurrentUser()),
       ]);
+
+      _profileAds = await _apiService.fetchFeedAds(placement: 'FEED');
 
       // Parse user posts
       final postsRes = results[0];
@@ -146,6 +150,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     postAuthorUsername: post.author.username,
                   );
                 },
+                onPostDeleted: () {
+                  Navigator.pop(ctx);
+                  _handleLocalPostDeleted(post.id);
+                },
+                onPostEdited: (newText) {
+                  _handleLocalPostEdited(post.id, newText);
+                },
               ),
             ],
           ),
@@ -172,6 +183,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (idx != -1) {
         final p = _userPosts[idx];
         _userPosts[idx] = p.copyWith(isBookmarked: !p.isBookmarked);
+      }
+    });
+  }
+
+  void _handleLocalPostDeleted(String postId) {
+    if (!mounted) return;
+    setState(() {
+      _userPosts.removeWhere((p) => p.id == postId);
+    });
+  }
+
+  void _handleLocalPostEdited(String postId, String newContent) {
+    if (!mounted) return;
+    setState(() {
+      final idx = _userPosts.indexWhere((p) => p.id == postId);
+      if (idx != -1) {
+        final p = _userPosts[idx];
+        _userPosts[idx] = p.copyWith(content: newContent);
       }
     });
   }
@@ -237,9 +266,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          user.username.isNotEmpty ? '@${user.username}' : 'My Profile',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              user.username.isNotEmpty ? '@${user.username}' : 'My Profile',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            if (user.isVerified) ...[
+              const SizedBox(width: 4),
+              const Icon(
+                Icons.verified,
+                size: 16,
+                color: Color(0xFFF59E0B),
+              ),
+            ],
+          ],
         ),
         actions: [
           IconButton(
@@ -366,14 +408,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Full Name
-                    Text(
-                      user.displayName,
-                      style: const TextStyle(
-                        fontFamily: 'Quicksand',
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.onSurface,
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            user.displayName,
+                            style: const TextStyle(
+                              fontFamily: 'Quicksand',
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.onSurface,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (user.isVerified) ...[
+                          const SizedBox(width: 6),
+                          const Icon(
+                            Icons.verified,
+                            size: 20,
+                            color: Color(0xFFF59E0B),
+                          ),
+                        ],
+                      ],
                     ),
 
                     // Username
@@ -716,23 +774,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
       itemCount: _userPosts.length,
       itemBuilder: (context, index) {
         final post = _userPosts[index];
-        return PostCard(
-          post: post,
-          onLike: () {
-            postProvider.toggleLike(post.id);
-            _toggleLocalPostLike(post.id);
-          },
-          onBookmark: () {
-            postProvider.toggleBookmark(post.id, isCurrentlyBookmarked: post.isBookmarked);
-            _toggleLocalPostBookmark(post.id);
-          },
-          onComment: () {
-            CommentsBottomSheet.show(
-              context,
-              postId: post.id,
-              postAuthorUsername: post.author.username,
-            );
-          },
+        final shouldShowAd = index == 1 && _profileAds.isNotEmpty;
+        final adToShow = shouldShowAd ? _profileAds.first : null;
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PostCard(
+              post: post,
+              onLike: () {
+                postProvider.toggleLike(post.id);
+                _toggleLocalPostLike(post.id);
+              },
+              onBookmark: () {
+                postProvider.toggleBookmark(post.id, isCurrentlyBookmarked: post.isBookmarked);
+                _toggleLocalPostBookmark(post.id);
+              },
+              onComment: () {
+                CommentsBottomSheet.show(
+                  context,
+                  postId: post.id,
+                  postAuthorUsername: post.author.username,
+                );
+              },
+              onPostDeleted: () => _handleLocalPostDeleted(post.id),
+              onPostEdited: (newText) => _handleLocalPostEdited(post.id, newText),
+            ),
+            if (adToShow != null)
+              SponsoredPostCard(ad: adToShow),
+          ],
         );
       },
     );

@@ -136,11 +136,17 @@ class Post {
         email: '',
         username: p['username']?.toString() ?? p['full_name']?.toString() ?? 'Pet Lover',
         avatarUrl: p['avatar_url']?.toString(),
+        isVerified: p['verified'] == true || p['is_verified'] == true,
       );
     } else if (json['user'] != null && json['user'] is Map<String, dynamic>) {
       authorUser = User.fromJson(json['user'] as Map<String, dynamic>);
     } else {
-      authorUser = User(id: json['user_id']?.toString() ?? '', email: '', username: 'Pet Lover');
+      authorUser = User(
+        id: json['user_id']?.toString() ?? '',
+        email: '',
+        username: 'Pet Lover',
+        isVerified: json['verified'] == true || json['is_verified'] == true,
+      );
     }
 
     final stats = json['stats'] is Map<String, dynamic> ? json['stats'] as Map<String, dynamic> : null;
@@ -173,6 +179,8 @@ class Post {
   }
 
   Post copyWith({
+    String? content,
+    List<PostMedia>? media,
     int? likesCount,
     int? commentsCount,
     bool? isLiked,
@@ -180,9 +188,9 @@ class Post {
   }) {
     return Post(
       id: id,
-      content: content,
+      content: content ?? this.content,
       author: author,
-      media: media,
+      media: media ?? this.media,
       communityId: communityId,
       communityName: communityName,
       likesCount: likesCount ?? this.likesCount,

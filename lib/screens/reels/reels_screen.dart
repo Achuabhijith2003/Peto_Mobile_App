@@ -7,30 +7,35 @@ import '../../services/feed_video_manager.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/auth_prompt_bottom_sheet.dart';
 import '../../widgets/comments_bottom_sheet.dart';
+import '../../widgets/report_bottom_sheet.dart';
 import '../../models/reel_model.dart';
 import 'reel_video_player.dart';
 
 class ReelsScreen extends StatefulWidget {
   final Reel? initialReel;
   final bool showBackButton;
+  final bool isActive;
 
   const ReelsScreen({
     super.key,
     this.initialReel,
     this.showBackButton = false,
+    this.isActive = true,
   });
 
   @override
   State<ReelsScreen> createState() => _ReelsScreenState();
 }
 
-class _ReelsScreenState extends State<ReelsScreen> {
+class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
   late PageController _pageController;
   int _currentPage = 0;
+  bool _isAppInForeground = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pageController = PageController();
     // Pause any feed videos playing in the background
     FeedVideoManager().pauseAll();
@@ -41,7 +46,18 @@ class _ReelsScreenState extends State<ReelsScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final isForeground = state == AppLifecycleState.resumed;
+    if (_isAppInForeground != isForeground && mounted) {
+      setState(() {
+        _isAppInForeground = isForeground;
+      });
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     super.dispose();
   }
@@ -138,7 +154,7 @@ class _ReelsScreenState extends State<ReelsScreen> {
             },
             itemBuilder: (context, index) {
               final reel = displayReels[index];
-              final isActive = _currentPage == index;
+              final isActive = widget.isActive && _isAppInForeground && _currentPage == index;
 
               return Stack(
                 fit: StackFit.expand,
@@ -152,6 +168,7 @@ class _ReelsScreenState extends State<ReelsScreen> {
                     ReelVideoPlayer(
                       key: ValueKey('${reel.id}_${reel.mediaUrl}'),
                       videoUrl: reel.mediaUrl,
+                      thumbnailUrl: reel.thumbnailUrl,
                       isActive: isActive,
                     )
                   else if (reel.mediaUrl.isNotEmpty)
@@ -285,6 +302,22 @@ class _ReelsScreenState extends State<ReelsScreen> {
                               AuthPromptBottomSheet.show(context, actionTitle: 'Save Reel');
                             }
                           },
+                        ),
+                        const SizedBox(height: 16),
+                        IconButton(
+                          icon: const Icon(Icons.flag_outlined, color: Colors.white, size: 28),
+                          onPressed: () {
+                            ReportBottomSheet.show(
+                              context,
+                              targetType: 'reel',
+                              targetId: reel.id,
+                              targetTitle: reel.caption ?? 'Reel by ${reel.author.username}',
+                            );
+                          },
+                        ),
+                        const Text(
+                          'Report',
+                          style: TextStyle(color: Colors.white, fontSize: 11),
                         ),
                       ],
                     ),

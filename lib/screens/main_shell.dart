@@ -20,13 +20,6 @@ class _MainShellState extends State<MainShell> {
   final ApiService _apiService = ApiService();
   bool _hasCheckedHealth = false;
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    CommunityScreen(),
-    SearchScreen(),
-    ReelsScreen(),
-    ProfileScreen(),
-  ];
 
   @override
   void initState() {
@@ -128,7 +121,13 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: [
+          const HomeScreen(),
+          const CommunityScreen(),
+          const SearchScreen(),
+          ReelsScreen(isActive: _currentIndex == 3),
+          const ProfileScreen(),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,

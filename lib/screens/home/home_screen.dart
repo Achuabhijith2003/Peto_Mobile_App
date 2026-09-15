@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/post_provider.dart';
+import '../../providers/notification_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/post_card.dart';
+import '../../widgets/sponsored_post_card.dart';
+import '../../services/api_service.dart';
 import '../../widgets/comments_bottom_sheet.dart';
 import '../../widgets/auth_prompt_bottom_sheet.dart';
 import '../posts/create_post_screen.dart';
+import '../notifications/notification_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,14 +21,29 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final ScrollController _scrollController = ScrollController();
+  List<Map<String, dynamic>> _feedAds = [];
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _loadFeedAds();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<PostProvider>(context, listen: false).fetchPosts();
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      if (auth.isAuthenticated) {
+        Provider.of<NotificationProvider>(context, listen: false).fetchUnreadCount();
+      }
     });
+  }
+
+  Future<void> _loadFeedAds() async {
+    final ads = await ApiService().fetchFeedAds(placement: 'FEED');
+    if (mounted) {
+      setState(() {
+        _feedAds = ads;
+      });
+    }
   }
 
   void _onScroll() {
@@ -69,22 +88,67 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_none_outlined),
-            onPressed: () {
-              if (!authProvider.isAuthenticated) {
-                AuthPromptBottomSheet.show(
-                  context,
-                  actionTitle: 'Notifications',
-                );
-              }
+          Consumer<NotificationProvider>(
+            builder: (context, notifProvider, _) {
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications_none_outlined),
+                    onPressed: () {
+                      if (!authProvider.isAuthenticated) {
+                        AuthPromptBottomSheet.show(
+                          context,
+                          actionTitle: 'Notifications',
+                        );
+                        return;
+                      }
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const NotificationScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  if (notifProvider.unreadCount > 0)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: IgnorePointer(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          decoration: const BoxDecoration(
+                            color: AppColors.error,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                          child: Text(
+                            '${notifProvider.unreadCount > 99 ? '99+' : notifProvider.unreadCount}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
             },
           ),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () =>
-            Provider.of<PostProvider>(context, listen: false).fetchPosts(refresh: true),
+        onRefresh: () async {
+          final p1 = Provider.of<PostProvider>(context, listen: false).fetchPosts(refresh: true);
+          if (authProvider.isAuthenticated) {
+            Provider.of<NotificationProvider>(context, listen: false).fetchUnreadCount();
+          }
+          await p1;
+        },
         color: AppColors.primary,
         child: SingleChildScrollView(
           controller: _scrollController,
@@ -172,35 +236,47 @@ class _HomeScreenState extends State<HomeScreen> {
                   itemCount: postProvider.posts.length,
                   itemBuilder: (context, index) {
                     final post = postProvider.posts[index];
-                    return PostCard(
-                      post: post,
-                      onLike: () {
-                        if (authProvider.isAuthenticated) {
-                          postProvider.toggleLike(post.id);
-                        } else {
-                          AuthPromptBottomSheet.show(
-                            context,
-                            actionTitle: 'Like Post',
-                          );
-                        }
-                      },
-                      onBookmark: () {
-                        if (authProvider.isAuthenticated) {
-                          postProvider.toggleBookmark(post.id);
-                        } else {
-                          AuthPromptBottomSheet.show(
-                            context,
-                            actionTitle: 'Save Post',
-                          );
-                        }
-                      },
-                      onComment: () {
-                        CommentsBottomSheet.show(
-                          context,
-                          postId: post.id,
-                          postAuthorUsername: post.author.username,
-                        );
-                      },
+                    final shouldShowAd = index > 0 && index % 4 == 3 && _feedAds.isNotEmpty;
+                    final adToShow = shouldShowAd
+                        ? _feedAds[(index ~/ 4) % _feedAds.length]
+                        : null;
+
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        PostCard(
+                          post: post,
+                          onLike: () {
+                            if (authProvider.isAuthenticated) {
+                              postProvider.toggleLike(post.id);
+                            } else {
+                              AuthPromptBottomSheet.show(
+                                context,
+                                actionTitle: 'Like Post',
+                              );
+                            }
+                          },
+                          onBookmark: () {
+                            if (authProvider.isAuthenticated) {
+                              postProvider.toggleBookmark(post.id);
+                            } else {
+                              AuthPromptBottomSheet.show(
+                                context,
+                                actionTitle: 'Save Post',
+                              );
+                            }
+                          },
+                          onComment: () {
+                            CommentsBottomSheet.show(
+                              context,
+                              postId: post.id,
+                              postAuthorUsername: post.author.username,
+                            );
+                          },
+                        ),
+                        if (adToShow != null)
+                          SponsoredPostCard(ad: adToShow),
+                      ],
                     );
                   },
                 ),

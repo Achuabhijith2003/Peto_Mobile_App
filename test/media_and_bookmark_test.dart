@@ -3,6 +3,7 @@ import 'package:peto_user/models/post_model.dart';
 import 'package:peto_user/models/reel_model.dart';
 import 'package:peto_user/services/feed_video_manager.dart';
 import 'package:peto_user/services/api_service.dart';
+import 'package:peto_user/models/notification_model.dart';
 
 void main() {
   group('PostMedia Tests', () {
@@ -96,5 +97,39 @@ void main() {
       expect(failure.errorMessage, 'Please log in');
     });
   });
+
+  group('Notification Model Tests', () {
+    test('NotificationItem correctly parses from JSON and maps fields', () {
+      final json = {
+        'id': 'notif_1',
+        'recipient_id': 'u1',
+        'actor_id': 'u2',
+        'post_id': 'p1',
+        'type': 'like',
+        'message': 'liked your post',
+        'is_read': false,
+        'created_at': '2026-09-07T12:00:00.000Z',
+        'actor': {
+          'id': 'u2',
+          'username': 'doglover',
+          'avatar_url': 'https://example.com/avatar.jpg',
+        },
+      };
+
+      final item = NotificationItem.fromJson(json);
+      expect(item.id, 'notif_1');
+      expect(item.recipientId, 'u1');
+      expect(item.type, 'like');
+      expect(item.message, 'liked your post');
+      expect(item.isRead, isFalse);
+      expect(item.actor?.username, 'doglover');
+      expect(item.actor?.avatarUrl, 'https://example.com/avatar.jpg');
+
+      final readItem = item.copyWith(isRead: true);
+      expect(readItem.isRead, isTrue);
+      expect(readItem.id, 'notif_1');
+    });
+  });
 }
+
 

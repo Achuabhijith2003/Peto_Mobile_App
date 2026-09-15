@@ -3,6 +3,7 @@ import 'user_model.dart';
 class Reel {
   final String id;
   final String mediaUrl;
+  final String? thumbnailUrl;
   final String? caption;
   final User author;
   final int likesCount;
@@ -13,6 +14,7 @@ class Reel {
   Reel({
     required this.id,
     required this.mediaUrl,
+    this.thumbnailUrl,
     this.caption,
     required this.author,
     this.likesCount = 0,
@@ -37,6 +39,7 @@ class Reel {
 
   factory Reel.fromJson(Map<String, dynamic> json) {
     String mediaUrl = '';
+    String? thumbUrl = json['thumbnail_url']?.toString() ?? json['thumbnail']?.toString();
 
     if (json['media'] is List && (json['media'] as List).isNotEmpty) {
       final mediaList = json['media'] as List;
@@ -62,6 +65,7 @@ class Reel {
       if (videoItem != null) {
         if (videoItem is Map) {
           mediaUrl = videoItem['url']?.toString() ?? videoItem['path']?.toString() ?? videoItem['src']?.toString() ?? '';
+          thumbUrl = thumbUrl ?? videoItem['thumbnail_url']?.toString() ?? videoItem['thumbnail']?.toString();
         } else if (videoItem is String) {
           mediaUrl = videoItem;
         }
@@ -76,12 +80,16 @@ class Reel {
       final first = (json['media'] as List).first;
       if (first is Map) {
         mediaUrl = first['url']?.toString() ?? first['path']?.toString() ?? first['src']?.toString() ?? '';
+        thumbUrl = thumbUrl ?? first['thumbnail_url']?.toString() ?? first['thumbnail']?.toString();
       } else if (first is String) {
         mediaUrl = first;
       }
     }
 
     mediaUrl = sanitizeUrl(mediaUrl);
+    if (thumbUrl != null && thumbUrl.isNotEmpty) {
+      thumbUrl = sanitizeUrl(thumbUrl);
+    }
 
     User authorUser;
     if (json['author'] != null && json['author'] is Map<String, dynamic>) {
@@ -115,6 +123,7 @@ class Reel {
     return Reel(
       id: json['id']?.toString() ?? '',
       mediaUrl: mediaUrl,
+      thumbnailUrl: thumbUrl,
       caption: json['caption']?.toString() ?? json['content']?.toString() ?? json['text']?.toString(),
       author: authorUser,
       likesCount: likes,
@@ -129,10 +138,12 @@ class Reel {
     int? commentsCount,
     bool? isLiked,
     bool? isBookmarked,
+    String? thumbnailUrl,
   }) {
     return Reel(
       id: id,
       mediaUrl: mediaUrl,
+      thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
       caption: caption,
       author: author,
       likesCount: likesCount ?? this.likesCount,

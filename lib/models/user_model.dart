@@ -57,6 +57,7 @@ class User {
   final int followersCount;
   final int followingCount;
   final bool isFollowing;
+  final bool isVerified;
 
   User({
     required this.id,
@@ -70,7 +71,10 @@ class User {
     this.followersCount = 0,
     this.followingCount = 0,
     this.isFollowing = false,
+    this.isVerified = false,
   });
+
+  bool get verified => isVerified;
 
   String get displayName =>
       (fullName != null && fullName!.trim().isNotEmpty) ? fullName! : (username.isNotEmpty ? username : 'Pet Parent');
@@ -111,6 +115,10 @@ class User {
       isFollowing: json['isFollowing'] == true ||
           json['is_following'] == true ||
           json['following'] == true,
+      isVerified: json['verified'] == true ||
+          json['is_verified'] == true ||
+          profileData['verified'] == true ||
+          profileData['is_verified'] == true,
     );
   }
 
@@ -127,6 +135,7 @@ class User {
       'followers_count': followersCount,
       'following_count': followingCount,
       'is_following': isFollowing,
+      'verified': isVerified,
     };
   }
 

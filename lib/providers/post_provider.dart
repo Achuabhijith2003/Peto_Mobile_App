@@ -296,4 +296,68 @@ class PostProvider extends ChangeNotifier {
 
     notifyListeners();
   }
+
+  Future<bool> deletePost(String postId) async {
+    try {
+      final response = await _apiService.deletePost(postId);
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        _posts.removeWhere((p) => p.id == postId);
+        _bookmarkedPosts.removeWhere((p) => p.id == postId);
+        notifyListeners();
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Delete post API error: $e');
+    }
+    return false;
+  }
+
+  Future<bool> updatePost(String postId, String newContent) async {
+    try {
+      final response = await _apiService.updatePost(postId, {'text': newContent, 'content': newContent});
+      if (response.statusCode == 200) {
+        final postIndex = _posts.indexWhere((p) => p.id == postId);
+        if (postIndex != -1) {
+          final old = _posts[postIndex];
+          _posts[postIndex] = Post(
+            id: old.id,
+            content: newContent,
+            author: old.author,
+            media: old.media,
+            communityId: old.communityId,
+            communityName: old.communityName,
+            likesCount: old.likesCount,
+            commentsCount: old.commentsCount,
+            isLiked: old.isLiked,
+            isBookmarked: old.isBookmarked,
+            createdAt: old.createdAt,
+          );
+        }
+
+        final bookmarkIndex = _bookmarkedPosts.indexWhere((p) => p.id == postId);
+        if (bookmarkIndex != -1) {
+          final old = _bookmarkedPosts[bookmarkIndex];
+          _bookmarkedPosts[bookmarkIndex] = Post(
+            id: old.id,
+            content: newContent,
+            author: old.author,
+            media: old.media,
+            communityId: old.communityId,
+            communityName: old.communityName,
+            likesCount: old.likesCount,
+            commentsCount: old.commentsCount,
+            isLiked: old.isLiked,
+            isBookmarked: old.isBookmarked,
+            createdAt: old.createdAt,
+          );
+        }
+
+        notifyListeners();
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Update post API error: $e');
+    }
+    return false;
+  }
 }

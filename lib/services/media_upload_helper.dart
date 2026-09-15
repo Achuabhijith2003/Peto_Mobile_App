@@ -172,7 +172,11 @@ class MediaUploadHelper {
       ),
     );
 
-    final result = await _apiService.uploadMediaFile(pickedFile.path, fileName: pickedFile.name);
+    final result = await _apiService.uploadMediaFile(
+      pickedFile.path,
+      fileName: pickedFile.name,
+      isVideo: isVideo,
+    );
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();

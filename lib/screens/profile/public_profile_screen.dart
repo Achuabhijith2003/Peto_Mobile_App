@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/post_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/post_card.dart';
+import '../../widgets/sponsored_post_card.dart';
 import '../../widgets/comments_bottom_sheet.dart';
 import '../../widgets/auth_prompt_bottom_sheet.dart';
 import 'followers_following_screen.dart';
@@ -29,9 +30,9 @@ class PublicProfileScreen extends StatefulWidget {
 
 class _PublicProfileScreenState extends State<PublicProfileScreen> {
   final ApiService _apiService = ApiService();
-
   User? _user;
   List<Post> _posts = [];
+  List<Map<String, dynamic>> _profileAds = [];
   bool _isLoading = true;
   bool _isFollowing = false;
   int _followersCount = 0;
@@ -60,6 +61,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         _apiService.getFollowers(widget.userId).catchError((_) => Response(requestOptions: RequestOptions(), statusCode: 500)),
         _apiService.getFollowing(widget.userId).catchError((_) => Response(requestOptions: RequestOptions(), statusCode: 500)),
       ]);
+
+      try {
+        _profileAds = await _apiService.fetchFeedAds(placement: 'FEED');
+      } catch (_) {}
 
       final userRes = results[0];
       final postsRes = results[1];
@@ -147,12 +152,26 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final coverUrl = user?.coverUrl;
     final bio = user?.bio;
     final location = user?.location;
+    final isVerified = user?.isVerified == true || widget.initialUser?.isVerified == true;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          '@$username',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '@$username',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            if (isVerified) ...[
+              const SizedBox(width: 4),
+              const Icon(
+                Icons.verified,
+                size: 16,
+                color: Color(0xFFF59E0B),
+              ),
+            ],
+          ],
         ),
       ),
       body: _isLoading && _user == null
@@ -235,13 +254,29 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      displayName,
-                                      style: const TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.onSurface,
-                                      ),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            displayName,
+                                            style: const TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppColors.onSurface,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (isVerified) ...[
+                                          const SizedBox(width: 6),
+                                          const Icon(
+                                            Icons.verified,
+                                            size: 18,
+                                            color: Color(0xFFF59E0B),
+                                          ),
+                                        ],
+                                      ],
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
@@ -462,30 +497,39 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                         itemBuilder: (context, index) {
                           final post = _posts[index];
                           final postProvider = Provider.of<PostProvider>(context);
+                          final shouldShowAd = index == 1 && _profileAds.isNotEmpty;
+                          final adToShow = shouldShowAd ? _profileAds.first : null;
 
-                          return PostCard(
-                            post: post,
-                            onLike: () {
-                              if (authProvider.isAuthenticated) {
-                                postProvider.toggleLike(post.id);
-                              } else {
-                                AuthPromptBottomSheet.show(context, actionTitle: 'Like Post');
-                              }
-                            },
-                            onBookmark: () {
-                              if (authProvider.isAuthenticated) {
-                                postProvider.toggleBookmark(post.id);
-                              } else {
-                                AuthPromptBottomSheet.show(context, actionTitle: 'Save Post');
-                              }
-                            },
-                            onComment: () {
-                              CommentsBottomSheet.show(
-                                context,
-                                postId: post.id,
-                                postAuthorUsername: post.author.username,
-                              );
-                            },
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              PostCard(
+                                post: post,
+                                onLike: () {
+                                  if (authProvider.isAuthenticated) {
+                                    postProvider.toggleLike(post.id);
+                                  } else {
+                                    AuthPromptBottomSheet.show(context, actionTitle: 'Like Post');
+                                  }
+                                },
+                                onBookmark: () {
+                                  if (authProvider.isAuthenticated) {
+                                    postProvider.toggleBookmark(post.id);
+                                  } else {
+                                    AuthPromptBottomSheet.show(context, actionTitle: 'Save Post');
+                                  }
+                                },
+                                onComment: () {
+                                  CommentsBottomSheet.show(
+                                    context,
+                                    postId: post.id,
+                                    postAuthorUsername: post.author.username,
+                                  );
+                                },
+                              ),
+                              if (adToShow != null)
+                                SponsoredPostCard(ad: adToShow),
+                            ],
                           );
                         },
                       ),

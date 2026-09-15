@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../theme/app_theme.dart';
 
 class ReelVideoPlayer extends StatefulWidget {
   final String videoUrl;
+  final String? thumbnailUrl;
   final bool isActive;
 
   const ReelVideoPlayer({
     super.key,
     required this.videoUrl,
+    this.thumbnailUrl,
     required this.isActive,
   });
 
@@ -31,11 +34,29 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer> {
   @override
   void initState() {
     super.initState();
-    _initController();
+    if (widget.isActive) {
+      _initController();
+    }
+  }
+
+  void _disposeController() {
+    _controller?.dispose();
+    _controller = null;
+    _isInitialized = false;
+    _isPlaying = false;
   }
 
   void _initController() {
     if (_isDisposed) return;
+
+    final cleanUrl = widget.videoUrl.trim();
+    if (cleanUrl.isEmpty) {
+      setState(() {
+        _hasError = true;
+        _isInitialized = false;
+      });
+      return;
+    }
 
     setState(() {
       _hasError = false;
@@ -43,17 +64,19 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer> {
     });
 
     try {
-      final uri = Uri.parse(widget.videoUrl);
+      final uri = Uri.tryParse(cleanUrl) ?? Uri.parse(Uri.encodeFull(cleanUrl));
 
       _controller?.dispose();
-      _controller = VideoPlayerController.networkUrl(
+      final controller = VideoPlayerController.networkUrl(
         uri,
         videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
       );
+      _controller = controller;
 
-      _controller!.initialize().then((_) {
-        if (_isDisposed || !mounted) return;
-        _controller!.setLooping(true);
+      controller.initialize().then((_) {
+        if (_isDisposed || !mounted || _controller != controller) return;
+        controller.setLooping(true);
+
         setState(() {
           _isInitialized = true;
           _hasError = false;
@@ -61,17 +84,20 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer> {
         });
 
         if (widget.isActive) {
-          _controller!.play();
+          controller.play();
           _isPlaying = true;
+        } else {
+          controller.pause();
+          _isPlaying = false;
         }
       }).catchError((e) {
         debugPrint('Reel video initialization error: $e');
-        if (_isDisposed || !mounted) return;
+        if (_isDisposed || !mounted || _controller != controller) return;
 
-        // Automatic retry once for the active reel
-        if (widget.isActive && _retryCount < 1) {
+        // Automatic retry up to 2 times for the active reel
+        if (widget.isActive && _retryCount < 2) {
           _retryCount++;
-          Future.delayed(const Duration(milliseconds: 1200), () {
+          Future.delayed(const Duration(milliseconds: 1000), () {
             if (!_isDisposed && mounted && widget.isActive) {
               _initController();
             }
@@ -84,9 +110,9 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer> {
         });
       });
 
-      _controller!.addListener(() {
-        if (_isDisposed || !mounted) return;
-        final isPlaying = _controller?.value.isPlaying ?? false;
+      controller.addListener(() {
+        if (_isDisposed || !mounted || _controller != controller) return;
+        final isPlaying = controller.value.isPlaying;
         if (_isPlaying != isPlaying) {
           setState(() {
             _isPlaying = isPlaying;
@@ -108,25 +134,22 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer> {
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.videoUrl != widget.videoUrl) {
-      _initController();
+      if (widget.isActive) {
+        _initController();
+      } else {
+        _disposeController();
+      }
       return;
     }
 
     if (oldWidget.isActive != widget.isActive) {
       if (widget.isActive) {
-        // If becoming active and previously had an error or not initialized, retry
-        if (_hasError || !_isInitialized) {
-          _initController();
-        } else if (_isInitialized && _controller != null) {
-          _controller!.play();
-          _isPlaying = true;
-        }
+        // When becoming active, initialize controller to acquire hardware decoder
+        _initController();
       } else {
-        if (_isInitialized && _controller != null) {
-          _controller!.pause();
-          _controller!.seekTo(Duration.zero);
-          _isPlaying = false;
-        }
+        // When leaving active view, immediately dispose controller to release decoder
+        _disposeController();
+        if (mounted) setState(() {});
       }
     }
   }
@@ -134,7 +157,7 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer> {
   @override
   void dispose() {
     _isDisposed = true;
-    _controller?.dispose();
+    _disposeController();
     super.dispose();
   }
 
@@ -156,6 +179,32 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer> {
         });
       }
     });
+  }
+
+  Widget _buildThumbnailOrPlaceholder({bool showLoader = false}) {
+    final hasThumb = widget.thumbnailUrl != null && widget.thumbnailUrl!.trim().isNotEmpty;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (hasThumb)
+          CachedNetworkImage(
+            imageUrl: widget.thumbnailUrl!.trim(),
+            fit: BoxFit.cover,
+            placeholder: (context, url) => Container(color: Colors.black),
+            errorWidget: (context, url, error) => Container(color: Colors.black),
+          )
+        else
+          Container(color: Colors.black),
+        if (showLoader)
+          const Center(
+            child: CircularProgressIndicator(
+              color: AppColors.primaryContainer,
+              strokeWidth: 2.5,
+            ),
+          ),
+      ],
+    );
   }
 
   @override
@@ -198,20 +247,12 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer> {
     }
 
     if (!_isInitialized || _controller == null) {
-      return Container(
-        color: Colors.black,
-        child: const Center(
-          child: CircularProgressIndicator(
-            color: AppColors.primaryContainer,
-            strokeWidth: 2.5,
-          ),
-        ),
-      );
+      return _buildThumbnailOrPlaceholder(showLoader: widget.isActive);
     }
 
     final size = MediaQuery.of(context).size;
     final deviceRatio = size.width / size.height;
-    final videoRatio = _controller!.value.aspectRatio;
+    final videoRatio = _controller!.value.aspectRatio > 0 ? _controller!.value.aspectRatio : 9 / 16;
     final isLandscape = videoRatio >= 1.0;
 
     return GestureDetector(
