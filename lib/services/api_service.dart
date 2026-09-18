@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'storage_service.dart';
+import '../models/policy_model.dart';
 
 class ApiService {
   // 10.0.2.2 targets localhost from Android Emulator
@@ -264,10 +265,14 @@ class ApiService {
     return await _dio.get('/posts/$postId/comments');
   }
 
-  Future<Response> createComment(String postId, String content) async {
+  Future<Response> createComment(String postId, String content, {String? parentCommentId}) async {
+    final Map<String, dynamic> data = {'comment': content};
+    if (parentCommentId != null && parentCommentId.isNotEmpty) {
+      data['parent_comment_id'] = parentCommentId;
+    }
     return await _dio.post(
       '/posts/$postId/comments',
-      data: {'comment': content, 'content': content},
+      data: data,
     );
   }
 
@@ -568,9 +573,18 @@ class ApiService {
     }
   }
 
-  /// Fetch active sponsored advertisements for feeds
+  /// Fetch active sponsored advertisements for feeds (supports both unified AdDecisionEngine and direct fallback)
   Future<List<Map<String, dynamic>>> fetchFeedAds({String placement = 'FEED'}) async {
     try {
+      // 1. Try unified AdDecisionEngine first
+      final decision = await fetchUnifiedAdDecision(placement: placement);
+      if (decision != null && decision['hasAd'] == true && decision['ad'] != null) {
+        final adData = Map<String, dynamic>.from(decision['ad']);
+        adData['source'] = decision['source'] ?? adData['source'] ?? 'PETO';
+        return [adData];
+      }
+
+      // 2. Graceful fallback to legacy direct feed
       final response = await _dio.get(
         '/ads/feed',
         queryParameters: {'placement': placement},
@@ -587,6 +601,63 @@ class ApiService {
       // Non-blocking fallback
     }
     return [];
+  }
+
+  /// Request unified ad decision from AdDecisionEngine (Peto internal auction vs External AdMob)
+  Future<Map<String, dynamic>?> fetchUnifiedAdDecision({
+    String placement = 'FEED',
+    int? organicCount,
+  }) async {
+    try {
+      final device = Platform.isAndroid ? 'ANDROID' : (Platform.isIOS ? 'IOS' : 'WEB');
+      final response = await _dio.get(
+        '/ads/decision',
+        queryParameters: {
+          'placement': placement,
+          'device': device,
+          'organicCount': ?organicCount,
+        },
+      );
+      if (response.statusCode == 200 && response.data != null && response.data['hasAd'] == true) {
+        return Map<String, dynamic>.from(response.data);
+      }
+    } catch (_) {
+      // Non-blocking fallback
+    }
+    return null;
+  }
+
+  /// Track external ad network telemetry event
+  Future<void> trackExternalAdEvent({
+    required String eventType,
+    required String provider,
+    String? placement,
+    String? creativeId,
+    String? adUnitId,
+    String? status,
+    String? errorCode,
+    int? latencyMs,
+  }) async {
+    try {
+      final platform = Platform.isAndroid ? 'ANDROID' : (Platform.isIOS ? 'IOS' : 'WEB');
+      await _dio.post(
+        '/ads/events',
+        data: {
+          'eventType': eventType,
+          'adSource': 'EXTERNAL',
+          'provider': provider,
+          'placement': placement ?? 'FEED',
+          'platform': platform,
+          'creativeId': creativeId,
+          'adUnitId': adUnitId,
+          'status': status ?? 'SUCCESS',
+          'errorCode': errorCode,
+          'latencyMs': latencyMs,
+        },
+      );
+    } catch (_) {
+      // Non-blocking
+    }
   }
 
   /// Track ad impression
@@ -607,6 +678,239 @@ class ApiService {
         data: {'creativeId': creativeId},
       );
     } catch (_) {}
+  }
+
+  /// Track ad user feedback (hide, report, not interested)
+  Future<void> trackAdFeedback(
+    String campaignId, {
+    required String action,
+    String? reason,
+    String? details,
+    String? creativeId,
+  }) async {
+    try {
+      await _dio.post(
+        '/ads/$campaignId/feedback',
+        data: {
+          'action': action,
+          'reason': reason,
+          'details': details,
+          'creativeId': creativeId,
+        },
+      );
+    } catch (_) {}
+  }
+
+  /// Fetch all active compliance policies
+  Future<List<PolicyModel>> fetchPublicPolicies() async {
+    try {
+      final response = await _dio.get('/policies');
+      if (response.statusCode == 200 && response.data != null) {
+        final List<dynamic>? list = response.data['data'];
+        if (list != null) {
+          return list
+              .whereType<Map<String, dynamic>>()
+              .map((item) => PolicyModel.fromJson(item))
+              .toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching public policies: $e');
+    }
+    return [];
+  }
+
+  /// Fetch single policy by slug (e.g. 'terms-of-service', 'privacy-policy')
+  Future<PolicyModel?> fetchPolicyBySlug(String slug) async {
+    try {
+      final response = await _dio.get('/policies/$slug');
+      if (response.statusCode == 200 && response.data != null && response.data['data'] != null) {
+        return PolicyModel.fromJson(Map<String, dynamic>.from(response.data['data']));
+      }
+    } catch (e) {
+      debugPrint('Error fetching policy $slug: $e');
+    }
+    return null;
+  }
+
+  /// Get PDF download URL for policy
+  String getPolicyPdfUrl(String slug) {
+    final base = _dio.options.baseUrl.isNotEmpty ? _dio.options.baseUrl : defaultBaseUrl;
+    return '$base/policies/$slug/pdf';
+  }
+
+  /// Change password for authenticated user
+  Future<Map<String, dynamic>> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/auth/change-password',
+        data: {
+          'currentPassword': currentPassword,
+          'newPassword': newPassword,
+        },
+      );
+      if (response.data is Map<String, dynamic>) {
+        return Map<String, dynamic>.from(response.data);
+      }
+      return {'success': true, 'message': 'Password updated successfully.'};
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      final msg = (data is Map && data['message'] != null)
+          ? data['message'].toString()
+          : (data is Map && data['error'] != null)
+              ? data['error'].toString()
+              : (e.message ?? 'Failed to update password');
+      return {'success': false, 'message': msg};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Fetch verification status for authenticated user
+  Future<Map<String, dynamic>> fetchVerificationStatus() async {
+    try {
+      final response = await _dio.get('/advertisers/verification/status');
+      if (response.data is Map<String, dynamic>) {
+        return Map<String, dynamic>.from(response.data);
+      }
+    } catch (e) {
+      debugPrint('Error fetching verification status: $e');
+    }
+    return {'success': false, 'has_application': false};
+  }
+
+  /// Submit individual identity verification request with optional document
+  Future<Map<String, dynamic>> submitIndividualVerification({
+    required String legalName,
+    required String country,
+    required String documentType,
+    required String documentNumber,
+    String? filePath,
+  }) async {
+    try {
+      final submitResponse = await _dio.post(
+        '/advertisers/verification/submit',
+        data: {
+          'entity_type': 'INDIVIDUAL',
+          'legal_name': legalName,
+          'country': country,
+          'document_type': documentType,
+          'document_number': documentNumber,
+        },
+      );
+
+      final appData = submitResponse.data;
+      if (appData == null || appData['success'] != true) {
+        return {
+          'success': false,
+          'message': appData?['error'] ?? 'Failed to submit verification request',
+        };
+      }
+
+      final appId = appData['application']?['id']?.toString();
+
+      if (filePath != null && filePath.isNotEmpty && appId != null) {
+        final fileName = filePath.split(Platform.pathSeparator).last;
+        final formData = FormData.fromMap({
+          'applicationId': appId,
+          'documentType': documentType,
+          'documentNumber': documentNumber,
+          'countryCode': country,
+          'isFront': 'true',
+          'document': await MultipartFile.fromFile(filePath, filename: fileName),
+        });
+
+        await _dio.post(
+          '/advertisers/verification/documents',
+          data: formData,
+        );
+      }
+
+      return {
+        'success': true,
+        'message': 'Verification application submitted successfully.',
+        'application': appData['application'],
+      };
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      final msg = (data is Map && data['error'] != null)
+          ? data['error'].toString()
+          : (data is Map && data['message'] != null)
+              ? data['message'].toString()
+              : (e.message ?? 'Verification submission failed');
+      return {'success': false, 'message': msg};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Get Google OAuth authorization URL from backend
+  Future<String?> getGoogleAuthUrl({String? redirectUrl}) async {
+    try {
+      final response = await _dio.get(
+        '/auth/google/url',
+        queryParameters: redirectUrl != null ? {'redirect_to': redirectUrl} : null,
+      );
+      if (response.statusCode == 200 && response.data != null && response.data['url'] != null) {
+        return response.data['url'].toString();
+      }
+    } catch (e) {
+      debugPrint('Error getting Google auth URL: $e');
+    }
+    return null;
+  }
+
+  /// Synchronize Google session tokens with backend & auto-create profile if new
+  Future<Map<String, dynamic>> syncGoogleAuth({
+    required String token,
+    String? refreshToken,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/auth/google',
+        data: {
+          'token': token,
+          'refreshToken': refreshToken,
+        },
+      );
+      if (response.data is Map<String, dynamic>) {
+        return Map<String, dynamic>.from(response.data);
+      }
+      return {'success': true, 'token': token, 'refreshToken': refreshToken};
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      final msg = (data is Map && data['message'] != null)
+          ? data['message'].toString()
+          : (e.message ?? 'Google authentication failed');
+      return {'success': false, 'message': msg};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Exchange temporary 6-digit sync code for tokens and user profile
+  Future<Map<String, dynamic>> exchangeGoogleCode(String code) async {
+    try {
+      final response = await _dio.post(
+        '/auth/google/exchange-code',
+        data: {'code': code.trim()},
+      );
+      if (response.data is Map<String, dynamic>) {
+        return Map<String, dynamic>.from(response.data);
+      }
+      return {'success': false, 'message': 'Invalid response from server.'};
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      final msg = (data is Map && data['message'] != null)
+          ? data['message'].toString()
+          : (e.message ?? 'Failed to exchange code');
+      return {'success': false, 'message': msg};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
   }
 }
 

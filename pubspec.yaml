@@ -44,6 +44,8 @@ dependencies:
   video_player: ^2.14.0
   visibility_detector: ^0.4.0+2
   image_picker: ^1.2.3
+  url_launcher: ^6.3.0
+  app_links: ^7.2.1
 
 dev_dependencies:
   flutter_test:

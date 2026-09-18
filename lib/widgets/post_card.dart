@@ -13,6 +13,7 @@ import '../screens/reels/reels_screen.dart';
 import '../screens/profile/public_profile_screen.dart';
 import 'report_bottom_sheet.dart';
 import 'image_viewer_screen.dart';
+import 'verification_badge.dart';
 
 class PostCard extends StatelessWidget {
   final Post post;
@@ -262,10 +263,9 @@ class PostCard extends StatelessWidget {
                               ),
                               if (post.author.isVerified) ...[
                                 const SizedBox(width: 4),
-                                const Icon(
-                                  Icons.verified,
+                                VerificationBadge(
+                                  badgeType: post.author.verificationBadgeType,
                                   size: 16,
-                                  color: Color(0xFFF59E0B),
                                 ),
                               ],
                             ],

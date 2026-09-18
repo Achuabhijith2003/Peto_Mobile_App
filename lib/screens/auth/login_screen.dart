@@ -7,6 +7,7 @@ import '../../widgets/custom_text_field.dart';
 import '../main_shell.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
+import '../../widgets/google_sign_in_button.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? initialEmail;
@@ -33,6 +34,26 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
     if (widget.initialEmail != null && widget.initialEmail!.isNotEmpty) {
       _emailController.text = widget.initialEmail!;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final authProvider = Provider.of<AuthProvider>(context);
+    if (authProvider.isAuthenticated && !authProvider.isLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          if (Navigator.canPop(context)) {
+            Navigator.pop(context);
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const MainShell()),
+            );
+          }
+        }
+      });
     }
   }
 
@@ -235,7 +256,29 @@ class _LoginScreenState extends State<LoginScreen> {
                   onPressed: _handleLogin,
                 ),
 
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: Colors.grey.shade300)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        'OR',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: Colors.grey.shade300)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                const GoogleSignInButton(),
+
+                const SizedBox(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [

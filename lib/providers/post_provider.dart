@@ -248,14 +248,14 @@ class PostProvider extends ChangeNotifier {
     return [];
   }
 
-  Future<PostComment?> addComment(String postId, String commentText) async {
+  Future<PostComment?> addComment(String postId, String commentText, {String? parentCommentId}) async {
     try {
-      final response = await _apiService.createComment(postId, commentText);
+      final response = await _apiService.createComment(postId, commentText, parentCommentId: parentCommentId);
       if (response.statusCode == 200 || response.statusCode == 201) {
         // Increment comment counter in local posts
         _incrementCommentsCount(postId, 1);
 
-        final commentData = response.data['data'] ?? response.data;
+        final commentData = response.data['comment'] ?? response.data['data'] ?? response.data;
         if (commentData != null && commentData is Map<String, dynamic>) {
           return PostComment.fromJson(commentData);
         }

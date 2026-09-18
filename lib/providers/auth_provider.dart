@@ -1,13 +1,18 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:app_links/app_links.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
+import '../main.dart';
 
 class AuthProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
   final StorageService _storageService = StorageService();
+  late final AppLinks _appLinks;
+  StreamSubscription<Uri>? _linkSubscription;
 
   User? _user;
   bool _isLoading = true;
@@ -20,6 +25,42 @@ class AuthProvider extends ChangeNotifier {
 
   AuthProvider() {
     checkAuthStatus();
+    _initDeepLinks();
+  }
+
+  void _initDeepLinks() {
+    try {
+      _appLinks = AppLinks();
+      _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
+        _handleDeepLink(uri);
+      });
+      _appLinks.getInitialLink().then((uri) {
+        if (uri != null) _handleDeepLink(uri);
+      });
+    } catch (e) {
+      debugPrint('Deep links init error: $e');
+    }
+  }
+
+  void _handleDeepLink(Uri uri) {
+    debugPrint('Received incoming deep link: $uri');
+    if (uri.scheme == 'peto' && (uri.host == 'auth-callback' || uri.path.contains('auth-callback'))) {
+      final token = uri.queryParameters['token'];
+      final refreshToken = uri.queryParameters['refreshToken'];
+      if (token != null && token.isNotEmpty) {
+        loginWithTokens(token: token, refreshToken: refreshToken).then((success) {
+          if (success) {
+            PetoUserApp.navigatorKey.currentState?.popUntil((route) => route.isFirst);
+          }
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _linkSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> checkAuthStatus() async {
@@ -73,6 +114,74 @@ class AuthProvider extends ChangeNotifier {
       _errorMessage = response.data['message'] ?? 'Login failed';
     } catch (e) {
       _errorMessage = 'Invalid email or password';
+    }
+
+    _isLoading = false;
+    notifyListeners();
+    return false;
+  }
+
+  /// Log in directly using session tokens (from Google OAuth or deep link)
+  Future<bool> loginWithTokens({
+    required String token,
+    String? refreshToken,
+  }) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      await _storageService.saveToken(token);
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        await _storageService.saveRefreshToken(refreshToken);
+      }
+
+      // Sync user with backend to ensure profile exists and load current user
+      final syncRes = await _apiService.syncGoogleAuth(token: token, refreshToken: refreshToken);
+      if (syncRes['user'] != null) {
+        final userData = syncRes['user'];
+        _user = User.fromJson(userData);
+        await _storageService.saveUserData(jsonEncode(_user!.toJson()));
+      } else {
+        // Fallback: fetch current user via /users/me
+        final meRes = await _apiService.getCurrentUser();
+        if (meRes.statusCode == 200 && meRes.data != null) {
+          final userData = meRes.data['user'] ?? meRes.data;
+          _user = User.fromJson(userData);
+          await _storageService.saveUserData(jsonEncode(_user!.toJson()));
+        }
+      }
+
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('Error logging in with tokens: $e');
+      _errorMessage = 'Failed to complete authentication.';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Log in using a 6-digit sync code from the web callback screen
+  Future<bool> loginWithGoogleCode(String code) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final res = await _apiService.exchangeGoogleCode(code);
+      if (res['success'] == true && res['token'] != null) {
+        return await loginWithTokens(
+          token: res['token'],
+          refreshToken: res['refreshToken'],
+        );
+      } else {
+        _errorMessage = res['message']?.toString() ?? 'Invalid code entered';
+      }
+    } catch (e) {
+      _errorMessage = 'Failed to verify code. Please try again.';
     }
 
     _isLoading = false;

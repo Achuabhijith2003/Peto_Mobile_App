@@ -12,10 +12,12 @@ import '../../widgets/post_card.dart';
 import '../../widgets/sponsored_post_card.dart';
 import '../../widgets/comments_bottom_sheet.dart';
 import '../../widgets/auth_prompt_bottom_sheet.dart';
+import '../../widgets/verification_badge.dart';
 import '../posts/create_post_screen.dart';
 import 'edit_profile_screen.dart';
 import 'bookmarks_screen.dart';
 import 'followers_following_screen.dart';
+import '../settings/settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -219,7 +221,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (!authProvider.isAuthenticated) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Profile')),
+        appBar: AppBar(
+          title: const Text('Profile'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              tooltip: 'Settings',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                );
+              },
+            ),
+          ],
+        ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24.0),
@@ -275,10 +291,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             if (user.isVerified) ...[
               const SizedBox(width: 4),
-              const Icon(
-                Icons.verified,
+              VerificationBadge(
+                badgeType: user.verificationBadgeType,
                 size: 16,
-                color: Color(0xFFF59E0B),
               ),
             ],
           ],
@@ -292,6 +307,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 context,
                 MaterialPageRoute(builder: (_) => const BookmarksScreen()),
               );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+              _loadProfileData();
             },
           ),
           IconButton(
@@ -369,32 +395,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
 
-                    // Edit Profile Action Button
+                    // Edit Profile & Settings Action Buttons
                     Positioned(
                       right: 16,
                       bottom: 8,
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: AppColors.surfaceContainerHigh),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        ),
-                        onPressed: () async {
-                          await Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const EditProfileScreen()),
-                          );
-                          _loadProfileData();
-                        },
-                        icon: const Icon(Icons.edit_outlined, size: 16, color: AppColors.onSurface),
-                        label: const Text(
-                          'Edit Profile',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.onSurface,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: AppColors.surfaceContainerHigh),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            ),
+                            onPressed: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const EditProfileScreen()),
+                              );
+                              _loadProfileData();
+                            },
+                            icon: const Icon(Icons.edit_outlined, size: 16, color: AppColors.onSurface),
+                            label: const Text(
+                              'Edit Profile',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.onSurface,
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 8),
+                          IconButton.outlined(
+                            style: IconButton.styleFrom(
+                              side: const BorderSide(color: AppColors.surfaceContainerHigh),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              padding: const EdgeInsets.all(8),
+                            ),
+                            icon: const Icon(Icons.settings_outlined, size: 18, color: AppColors.onSurface),
+                            tooltip: 'Settings',
+                            onPressed: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                              );
+                              _loadProfileData();
+                            },
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -425,10 +473,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         if (user.isVerified) ...[
                           const SizedBox(width: 6),
-                          const Icon(
-                            Icons.verified,
+                          VerificationBadge(
+                            badgeType: user.verificationBadgeType,
                             size: 20,
-                            color: Color(0xFFF59E0B),
                           ),
                         ],
                       ],

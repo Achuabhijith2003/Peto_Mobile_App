@@ -49,12 +49,14 @@ class PostComment {
   final String content;
   final User author;
   final DateTime createdAt;
+  final String? parentCommentId;
 
   PostComment({
     required this.id,
     required this.content,
     required this.author,
     required this.createdAt,
+    this.parentCommentId,
   });
 
   factory PostComment.fromJson(Map<String, dynamic> json) {
@@ -82,6 +84,7 @@ class PostComment {
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
           : DateTime.now(),
+      parentCommentId: json['parent_comment_id']?.toString(),
     );
   }
 }
@@ -137,6 +140,7 @@ class Post {
         username: p['username']?.toString() ?? p['full_name']?.toString() ?? 'Pet Lover',
         avatarUrl: p['avatar_url']?.toString(),
         isVerified: p['verified'] == true || p['is_verified'] == true,
+        verificationBadgeType: p['verification_badge_type']?.toString() ?? p['verificationBadgeType']?.toString(),
       );
     } else if (json['user'] != null && json['user'] is Map<String, dynamic>) {
       authorUser = User.fromJson(json['user'] as Map<String, dynamic>);
@@ -146,6 +150,7 @@ class Post {
         email: '',
         username: 'Pet Lover',
         isVerified: json['verified'] == true || json['is_verified'] == true,
+        verificationBadgeType: json['verification_badge_type']?.toString(),
       );
     }
 

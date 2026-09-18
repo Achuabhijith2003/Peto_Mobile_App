@@ -16,6 +16,8 @@ void main() {
 }
 
 class PetoUserApp extends StatelessWidget {
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
   const PetoUserApp({super.key});
 
   @override
@@ -30,6 +32,7 @@ class PetoUserApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => SystemStatusProvider()),
       ],
       child: MaterialApp(
+        navigatorKey: navigatorKey,
         title: 'Peto',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,

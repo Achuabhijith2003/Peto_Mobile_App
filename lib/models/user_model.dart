@@ -58,6 +58,7 @@ class User {
   final int followingCount;
   final bool isFollowing;
   final bool isVerified;
+  final String? verificationBadgeType;
 
   User({
     required this.id,
@@ -72,9 +73,13 @@ class User {
     this.followingCount = 0,
     this.isFollowing = false,
     this.isVerified = false,
+    this.verificationBadgeType,
   });
 
   bool get verified => isVerified;
+  bool get isBusinessBadge => verificationBadgeType == 'BUSINESS';
+  bool get isAdvertiserBadge => verificationBadgeType == 'ADVERTISER';
+  bool get isPersonBadge => verificationBadgeType == 'PERSON';
 
   String get displayName =>
       (fullName != null && fullName!.trim().isNotEmpty) ? fullName! : (username.isNotEmpty ? username : 'Pet Parent');
@@ -119,6 +124,10 @@ class User {
           json['is_verified'] == true ||
           profileData['verified'] == true ||
           profileData['is_verified'] == true,
+      verificationBadgeType: json['verification_badge_type']?.toString() ??
+          json['verificationBadgeType']?.toString() ??
+          profileData['verification_badge_type']?.toString() ??
+          profileData['verificationBadgeType']?.toString(),
     );
   }
 
@@ -136,6 +145,7 @@ class User {
       'following_count': followingCount,
       'is_following': isFollowing,
       'verified': isVerified,
+      'verification_badge_type': verificationBadgeType,
     };
   }
 
@@ -149,6 +159,8 @@ class User {
     int? followersCount,
     int? followingCount,
     bool? isFollowing,
+    bool? isVerified,
+    String? verificationBadgeType,
   }) {
     return User(
       id: id,
@@ -162,6 +174,8 @@ class User {
       followersCount: followersCount ?? this.followersCount,
       followingCount: followingCount ?? this.followingCount,
       isFollowing: isFollowing ?? this.isFollowing,
+      isVerified: isVerified ?? this.isVerified,
+      verificationBadgeType: verificationBadgeType ?? this.verificationBadgeType,
     );
   }
 }

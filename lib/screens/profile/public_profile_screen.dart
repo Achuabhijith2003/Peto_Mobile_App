@@ -12,6 +12,7 @@ import '../../widgets/post_card.dart';
 import '../../widgets/sponsored_post_card.dart';
 import '../../widgets/comments_bottom_sheet.dart';
 import '../../widgets/auth_prompt_bottom_sheet.dart';
+import '../../widgets/verification_badge.dart';
 import 'followers_following_screen.dart';
 
 class PublicProfileScreen extends StatefulWidget {
@@ -153,6 +154,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final bio = user?.bio;
     final location = user?.location;
     final isVerified = user?.isVerified == true || widget.initialUser?.isVerified == true;
+    final badgeType = user?.verificationBadgeType ?? widget.initialUser?.verificationBadgeType;
 
     return Scaffold(
       appBar: AppBar(
@@ -165,10 +167,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             ),
             if (isVerified) ...[
               const SizedBox(width: 4),
-              const Icon(
-                Icons.verified,
+              VerificationBadge(
+                badgeType: badgeType,
                 size: 16,
-                color: Color(0xFFF59E0B),
               ),
             ],
           ],
@@ -268,14 +269,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
-                                        if (isVerified) ...[
-                                          const SizedBox(width: 6),
-                                          const Icon(
-                                            Icons.verified,
-                                            size: 18,
-                                            color: Color(0xFFF59E0B),
-                                          ),
-                                        ],
+                                         if (isVerified) ...[
+                                           const SizedBox(width: 6),
+                                           VerificationBadge(
+                                             badgeType: badgeType,
+                                             size: 18,
+                                           ),
+                                         ],
                                       ],
                                     ),
                                     const SizedBox(height: 2),
