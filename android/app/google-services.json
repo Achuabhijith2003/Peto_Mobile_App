@@ -1,0 +1,34 @@
+{
+  "project_info": {
+    "project_number": "434236324879",
+    "project_id": "peto-d8c1b",
+    "storage_bucket": "peto-d8c1b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:434236324879:android:a032f8ac4229905602377a",
+        "android_client_info": {
+          "package_name": "com.peto.jr"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBMYW8jQREbBxSQmdTrstjAQ0V0l30QGOc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "434236324879-b4bdiktor5ti18bb1lbv818ptbo9kok0.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

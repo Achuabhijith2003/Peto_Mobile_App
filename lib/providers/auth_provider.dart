@@ -6,6 +6,7 @@ import 'package:app_links/app_links.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
+import '../services/notification_service.dart';
 import '../main.dart';
 
 class AuthProvider extends ChangeNotifier {
@@ -75,6 +76,7 @@ class AuthProvider extends ChangeNotifier {
           final userData = response.data['user'] ?? response.data;
           _user = User.fromJson(userData);
           await _storageService.saveUserData(jsonEncode(_user!.toJson()));
+          PushNotificationService().syncTokenWithBackend();
         }
       }
     } catch (e) {
@@ -106,6 +108,7 @@ class AuthProvider extends ChangeNotifier {
 
           _user = User.fromJson(userData);
           await _storageService.saveUserData(jsonEncode(_user!.toJson()));
+          PushNotificationService().syncTokenWithBackend();
           _isLoading = false;
           notifyListeners();
           return true;
@@ -152,6 +155,7 @@ class AuthProvider extends ChangeNotifier {
         }
       }
 
+      PushNotificationService().syncTokenWithBackend();
       _isLoading = false;
       notifyListeners();
       return true;
@@ -219,6 +223,7 @@ class AuthProvider extends ChangeNotifier {
           if (userData != null && userData is Map<String, dynamic>) {
             _user = User.fromJson(userData);
             await _storageService.saveUserData(jsonEncode(_user!.toJson()));
+            PushNotificationService().syncTokenWithBackend();
           }
           _isLoading = false;
           notifyListeners();
@@ -241,6 +246,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await PushNotificationService().unregisterToken();
     await _storageService.clearAuthData();
     _user = null;
     notifyListeners();

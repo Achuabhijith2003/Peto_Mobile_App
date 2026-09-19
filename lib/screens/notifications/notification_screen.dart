@@ -6,6 +6,7 @@ import '../../models/notification_model.dart';
 import '../../providers/notification_provider.dart';
 import '../../theme/app_theme.dart';
 import '../profile/public_profile_screen.dart';
+import '../posts/post_detail_screen.dart';
 
 class NotificationScreen extends StatefulWidget {
   const NotificationScreen({super.key});
@@ -95,6 +96,22 @@ class _NotificationScreenState extends State<NotificationScreen> {
       provider.markAsRead(item.id);
     }
 
+    // 1. If notification is tied to a post (like, comment, reply), open the post directly
+    if (item.postId != null && item.postId!.isNotEmpty) {
+      final isCommentType = item.type == 'comment' || item.type == 'reply';
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PostDetailScreen(
+            postId: item.postId!,
+            autoOpenComments: isCommentType,
+          ),
+        ),
+      );
+      return;
+    }
+
+    // 2. If notification is tied to an actor (follow, etc.), open user profile
     if (item.actor != null && item.actor!.id.isNotEmpty) {
       Navigator.push(
         context,
@@ -105,6 +122,7 @@ class _NotificationScreenState extends State<NotificationScreen> {
           ),
         ),
       );
+      return;
     }
   }
 

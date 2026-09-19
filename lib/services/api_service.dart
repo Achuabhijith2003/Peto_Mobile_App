@@ -247,6 +247,10 @@ class ApiService {
     return await _dio.delete('/posts/$id');
   }
 
+  Future<Response> getPostById(String id) async {
+    return await _dio.get('/posts/$id');
+  }
+
   // ----------------------
   // LIKES API (/api/posts/:id/like)
   // ----------------------
@@ -412,6 +416,19 @@ class ApiService {
 
   Future<Response> updateNotificationSettings(Map<String, dynamic> data) async {
     return await _dio.put('/notifications/settings', data: data);
+  }
+
+  Future<Response> registerDeviceToken(String fcmToken, {String platform = 'android'}) async {
+    return await _dio.post('/notifications/device-token', data: {
+      'fcmToken': fcmToken,
+      'platform': platform,
+    });
+  }
+
+  Future<Response> unregisterDeviceToken(String fcmToken) async {
+    return await _dio.delete('/notifications/device-token', data: {
+      'fcmToken': fcmToken,
+    });
   }
 
   // ----------------------

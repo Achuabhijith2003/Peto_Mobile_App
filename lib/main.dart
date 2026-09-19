@@ -9,9 +9,18 @@ import 'providers/notification_provider.dart';
 import 'providers/system_status_provider.dart';
 import 'screens/errors/maintenance_screen.dart';
 import 'screens/main_shell.dart';
+import 'services/notification_service.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Push Notifications (FCM & Local notification channels)
+  try {
+    await PushNotificationService().initialize();
+  } catch (e) {
+    debugPrint('Notification service initialization: $e');
+  }
+
   runApp(const PetoUserApp());
 }
 
