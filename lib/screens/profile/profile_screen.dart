@@ -18,6 +18,8 @@ import 'edit_profile_screen.dart';
 import 'bookmarks_screen.dart';
 import 'followers_following_screen.dart';
 import '../settings/settings_screen.dart';
+import '../../models/pet_model.dart';
+import '../../widgets/pet_showcase_section.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -31,6 +33,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   List<Post> _userPosts = [];
   List<Map<String, dynamic>> _profileAds = [];
+  List<Pet> _myPets = [];
   bool _isLoadingPosts = false;
   bool _isGridView = false;
   int _followersCount = 0;
@@ -81,6 +84,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ]);
 
       _profileAds = await _apiService.fetchFeedAds(placement: 'FEED');
+      _myPets = await _apiService.getMyPets();
 
       // Parse user posts
       final postsRes = results[0];
@@ -599,6 +603,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ],
                 ),
+              ),
+
+              // Pet Showcase Section
+              PetShowcaseSection(
+                pets: _myPets,
+                isOwnProfile: true,
+                onRefresh: _loadProfileData,
               ),
 
               // Posts Header with Grid / List Toggle (Instagram vs Facebook)

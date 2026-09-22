@@ -14,6 +14,8 @@ import '../../widgets/comments_bottom_sheet.dart';
 import '../../widgets/auth_prompt_bottom_sheet.dart';
 import '../../widgets/verification_badge.dart';
 import 'followers_following_screen.dart';
+import '../../models/pet_model.dart';
+import '../../widgets/pet_showcase_section.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   final String userId;
@@ -34,6 +36,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   User? _user;
   List<Post> _posts = [];
   List<Map<String, dynamic>> _profileAds = [];
+  List<Pet> _pets = [];
   bool _isLoading = true;
   bool _isFollowing = false;
   int _followersCount = 0;
@@ -65,6 +68,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
       try {
         _profileAds = await _apiService.fetchFeedAds(placement: 'FEED');
+        _pets = await _apiService.getUserPets(widget.userId);
       } catch (_) {}
 
       final userRes = results[0];
@@ -388,6 +392,12 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
                     const SizedBox(height: 16),
                     const Divider(height: 1),
+
+                    // Pet Showcase Section
+                    PetShowcaseSection(
+                      pets: _pets,
+                      isOwnProfile: false,
+                    ),
 
                     // Posts View Toggle
                     Padding(

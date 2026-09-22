@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'storage_service.dart';
 import '../models/policy_model.dart';
+import '../models/pet_model.dart';
 
 class ApiService {
   // 10.0.2.2 targets localhost from Android Emulator
@@ -511,10 +512,18 @@ class ApiService {
                     : (data['data'] as List).first)
                 : (data['data'] is Map ? (data['data']['url'] ?? data['data']['path']) : null));
 
+        final mediaId = data['mediaId'] ??
+            (data['data'] is List && (data['data'] as List).isNotEmpty
+                ? ((data['data'] as List).first is Map
+                    ? (data['data'] as List).first['id']?.toString()
+                    : null)
+                : (data['data'] is Map ? data['data']['id']?.toString() : null));
+
         if (mediaUrl != null && mediaUrl.toString().isNotEmpty) {
           return MediaUploadResult(
             success: true,
             mediaUrl: mediaUrl.toString(),
+            mediaId: mediaId?.toString(),
           );
         }
       }
@@ -929,16 +938,207 @@ class ApiService {
       return {'success': false, 'message': e.toString()};
     }
   }
+
+  // ==========================================
+  // PET SYSTEM & SHOWCASE ENDPOINTS
+  // ==========================================
+
+  /// Fetch authenticated user's pets
+  Future<List<Pet>> getMyPets() async {
+    try {
+      Response response;
+      try {
+        response = await _dio.get('/pets/my');
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 404) {
+          response = await _dio.get('/pet/my');
+        } else {
+          rethrow;
+        }
+      }
+
+      if (response.statusCode == 200 && response.data != null) {
+        final List<dynamic>? list = response.data['data'];
+        if (list != null) {
+          return list
+              .whereType<Map>()
+              .map((p) => Pet.fromJson(Map<String, dynamic>.from(p)))
+              .toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error getting my pets: $e');
+    }
+    return [];
+  }
+
+  /// Fetch pets showcased on a user profile (respecting visibility permissions)
+  Future<List<Pet>> getUserPets(String userId) async {
+    try {
+      Response response;
+      try {
+        response = await _dio.get('/pets/user/$userId');
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 404) {
+          response = await _dio.get('/pet/user/$userId');
+        } else {
+          rethrow;
+        }
+      }
+
+      if (response.statusCode == 200 && response.data != null) {
+        final List<dynamic>? list = response.data['data'];
+        if (list != null) {
+          return list
+              .whereType<Map>()
+              .map((p) => Pet.fromJson(Map<String, dynamic>.from(p)))
+              .toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error getting user pets: $e');
+    }
+    return [];
+  }
+
+  /// Fetch detailed pet showcase by ID (with server-side visibility check)
+  Future<Pet?> getPetById(String petId) async {
+    try {
+      Response response;
+      try {
+        response = await _dio.get('/pets/$petId');
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 404) {
+          response = await _dio.get('/pet/$petId');
+        } else {
+          rethrow;
+        }
+      }
+
+      if (response.statusCode == 200 && response.data != null && response.data['data'] != null) {
+        return Pet.fromJson(Map<String, dynamic>.from(response.data['data']));
+      }
+    } catch (e) {
+      debugPrint('Error getting pet details: $e');
+    }
+    return null;
+  }
+
+  /// Create a new pet profile (with fallback between /pets and /pet)
+  Future<Map<String, dynamic>> createPet(Map<String, dynamic> petData) async {
+    try {
+      Response response;
+      try {
+        response = await _dio.post('/pets', data: petData);
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 404) {
+          response = await _dio.post('/pet', data: petData);
+        } else {
+          rethrow;
+        }
+      }
+
+      if (response.data is Map<String, dynamic>) {
+        return Map<String, dynamic>.from(response.data);
+      }
+      return {'success': true};
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      final msg = (data is Map && data['message'] != null)
+          ? data['message'].toString()
+          : (e.message ?? 'Failed to add pet');
+      return {'success': false, 'message': msg};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Update pet profile details
+  Future<Map<String, dynamic>> updatePet(String petId, Map<String, dynamic> petData) async {
+    try {
+      Response response;
+      try {
+        response = await _dio.patch('/pets/$petId', data: petData);
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 404) {
+          response = await _dio.patch('/pet/$petId', data: petData);
+        } else {
+          rethrow;
+        }
+      }
+
+      if (response.data is Map<String, dynamic>) {
+        return Map<String, dynamic>.from(response.data);
+      }
+      return {'success': true};
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      final msg = (data is Map && data['message'] != null)
+          ? data['message'].toString()
+          : (e.message ?? 'Failed to update pet');
+      return {'success': false, 'message': msg};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Update pet visibility (PUBLIC, CONNECTIONS, PRIVATE)
+  Future<bool> updatePetVisibility(String petId, String visibility) async {
+    try {
+      Response response;
+      try {
+        response = await _dio.patch(
+          '/pets/$petId/visibility',
+          data: {'visibility': visibility},
+        );
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 404) {
+          response = await _dio.patch(
+            '/pet/$petId/visibility',
+            data: {'visibility': visibility},
+          );
+        } else {
+          rethrow;
+        }
+      }
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error updating pet visibility: $e');
+      return false;
+    }
+  }
+
+  /// Delete pet profile
+  Future<bool> deletePet(String petId) async {
+    try {
+      Response response;
+      try {
+        response = await _dio.delete('/pets/$petId');
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 404) {
+          response = await _dio.delete('/pet/$petId');
+        } else {
+          rethrow;
+        }
+      }
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error deleting pet: $e');
+      return false;
+    }
+  }
 }
 
 class MediaUploadResult {
   final bool success;
   final String? mediaUrl;
+  final String? mediaId;
   final String? errorMessage;
 
   MediaUploadResult({
     required this.success,
     this.mediaUrl,
+    this.mediaId,
     this.errorMessage,
   });
 }
