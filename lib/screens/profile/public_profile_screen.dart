@@ -68,6 +68,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
       try {
         _profileAds = await _apiService.fetchFeedAds(placement: 'FEED');
+      } catch (_) {}
+      try {
         _pets = await _apiService.getUserPets(widget.userId);
       } catch (_) {}
 

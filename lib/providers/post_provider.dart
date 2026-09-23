@@ -111,7 +111,13 @@ class PostProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> createPost(String content, {List<String>? mediaUrls, String? mediaUrl, String? communityId}) async {
+  Future<bool> createPost(
+    String content, {
+    List<String>? mediaUrls,
+    String? mediaUrl,
+    String? communityId,
+    String? petId,
+  }) async {
     try {
       final List<String> allMedia = [];
       if (mediaUrls != null && mediaUrls.isNotEmpty) {
@@ -126,6 +132,7 @@ class PostProvider extends ChangeNotifier {
         'media': allMedia,
         'media_url': allMedia.isNotEmpty ? allMedia.first : null,
         'community_id': communityId,
+        if (petId != null) 'pet_id': petId,
       });
 
       if (response.statusCode == 200 || response.statusCode == 201) {

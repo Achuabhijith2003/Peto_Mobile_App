@@ -8,11 +8,13 @@ import '../widgets/auth_prompt_bottom_sheet.dart';
 
 class PickedMediaResult {
   final String? uploadedUrl;
+  final String? mediaId;
   final String localPath;
   final bool isVideo;
 
   PickedMediaResult({
     this.uploadedUrl,
+    this.mediaId,
     required this.localPath,
     this.isVideo = false,
   });
@@ -203,6 +205,7 @@ class MediaUploadHelper {
     return PickedMediaResult(
       localPath: pickedFile.path,
       uploadedUrl: result.mediaUrl,
+      mediaId: result.mediaId,
       isVideo: isVideo,
     );
   }
@@ -217,19 +220,12 @@ class MediaUploadHelper {
       return [];
     }
 
-    List<XFile> pickedFiles = [];
-    try {
-      pickedFiles = await _picker.pickMultiImage(imageQuality: 85, limit: maxCount);
-    } catch (e) {
-      debugPrint('Error picking multiple photos: $e');
-      return [];
-    }
+    final List<XFile> pickedFiles = await _picker.pickMultiImage(
+      limit: maxCount,
+      imageQuality: 85,
+    );
 
     if (pickedFiles.isEmpty) return [];
-
-    if (pickedFiles.length > maxCount) {
-      pickedFiles = pickedFiles.sublist(0, maxCount);
-    }
 
     if (!context.mounted) return [];
 
@@ -256,6 +252,7 @@ class MediaUploadHelper {
       results.add(PickedMediaResult(
         localPath: file.path,
         uploadedUrl: res.mediaUrl,
+        mediaId: res.mediaId,
         isVideo: false,
       ));
     }

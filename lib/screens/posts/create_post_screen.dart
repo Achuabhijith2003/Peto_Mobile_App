@@ -9,8 +9,9 @@ import '../../widgets/custom_button.dart';
 
 class CreatePostScreen extends StatefulWidget {
   final String? communityId;
+  final String? petId;
 
-  const CreatePostScreen({super.key, this.communityId});
+  const CreatePostScreen({super.key, this.communityId, this.petId});
 
   @override
   State<CreatePostScreen> createState() => _CreatePostScreenState();
@@ -183,6 +184,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       mediaUrls: mediaUrls,
       mediaUrl: mediaUrls.isNotEmpty ? mediaUrls.first : null,
       communityId: widget.communityId,
+      petId: widget.petId,
     );
 
     setState(() => _isLoading = false);

@@ -83,8 +83,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _apiService.getFollowing(user.id).catchError((_) => _apiService.getCurrentUser()),
       ]);
 
-      _profileAds = await _apiService.fetchFeedAds(placement: 'FEED');
-      _myPets = await _apiService.getMyPets();
+      try {
+        _profileAds = await _apiService.fetchFeedAds(placement: 'FEED');
+      } catch (adErr) {
+        debugPrint('Non-critical: error fetching feed ads: $adErr');
+      }
+
+      try {
+        _myPets = await _apiService.getMyPets();
+      } catch (petsErr) {
+        debugPrint('Error loading my pets: $petsErr');
+      }
 
       // Parse user posts
       final postsRes = results[0];

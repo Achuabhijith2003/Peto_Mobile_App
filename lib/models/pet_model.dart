@@ -22,16 +22,22 @@ class PetParent {
   });
 
   factory PetParent.fromJson(Map<String, dynamic> json) {
+    final userMap = json['user'] is Map ? Map<String, dynamic>.from(json['user']) : null;
+    final profilesMap = json['profiles'] is Map ? Map<String, dynamic>.from(json['profiles']) : null;
+    final u = userMap ?? profilesMap;
+
     return PetParent(
       id: json['id']?.toString() ?? '',
-      userId: json['user_id']?.toString() ?? '',
-      relationshipType: json['relationship_type']?.toString() ?? 'CO_OWNER',
+      userId: json['user_id']?.toString() ?? u?['id']?.toString() ?? '',
+      relationshipType: json['relationship_type']?.toString() ??
+          json['relationship']?.toString() ??
+          'CO_OWNER',
       isPrimary: json['is_primary'] == true,
       status: json['status']?.toString() ?? 'ACTIVE',
-      username: json['username']?.toString() ?? '',
-      fullName: json['full_name']?.toString() ?? '',
-      avatarUrl: json['avatar_url']?.toString() ?? '',
-      verified: json['verified'] == true,
+      username: (json['username'] ?? u?['username'])?.toString() ?? '',
+      fullName: (json['full_name'] ?? u?['full_name'])?.toString() ?? '',
+      avatarUrl: (json['avatar_url'] ?? u?['avatar_url'])?.toString() ?? '',
+      verified: json['verified'] == true || u?['verified'] == true,
     );
   }
 
@@ -126,8 +132,10 @@ class Pet {
   final String species; // DOG, CAT, BIRD, RABBIT, etc.
   final String? speciesName;
   final String? breed;
+  final String? breedSecondary;
   final String? sex;
   final String? dateOfBirth;
+  final bool isDateOfBirthApproximate;
   final int? approximateAgeMonths;
   final String? size;
   final String? color;
@@ -136,6 +144,7 @@ class Pet {
   final String? state;
   final String? city;
   final String visibility; // PUBLIC, CONNECTIONS, PRIVATE
+  final String status;
   final String? avatarUrl;
   final String? coverUrl;
   final List<PetParent> parents;
@@ -148,8 +157,10 @@ class Pet {
     required this.species,
     this.speciesName,
     this.breed,
+    this.breedSecondary,
     this.sex,
     this.dateOfBirth,
+    this.isDateOfBirthApproximate = false,
     this.approximateAgeMonths,
     this.size,
     this.color,
@@ -158,6 +169,7 @@ class Pet {
     this.state,
     this.city,
     this.visibility = 'PUBLIC',
+    this.status = 'ACTIVE',
     this.avatarUrl,
     this.coverUrl,
     this.parents = const [],
@@ -170,6 +182,22 @@ class Pet {
       return speciesName!;
     }
     return species;
+  }
+
+  String? get displayBreed {
+    if (breed != null && breed!.trim().isNotEmpty) {
+      if (breedSecondary != null && breedSecondary!.trim().isNotEmpty) {
+        return '$breed & $breedSecondary Mix';
+      }
+      return breed;
+    }
+    return null;
+  }
+
+  String? get formattedLocation {
+    final parts = [city, state, country].where((p) => p != null && p.trim().isNotEmpty).toList();
+    if (parts.isEmpty) return null;
+    return parts.join(', ');
   }
 
   String get speciesEmoji {
@@ -206,10 +234,11 @@ class Pet {
           years--;
           months += 12;
         }
+        final prefix = isDateOfBirthApproximate ? 'Approx. ' : '';
         if (years > 0) {
-          return '$years yr${years > 1 ? "s" : ""}${months > 0 ? " $months mo" : ""}';
+          return '$prefix$years yr${years > 1 ? "s" : ""}${months > 0 ? " $months mo" : ""}';
         }
-        return '${months > 0 ? months : 1} month${months > 1 ? "s" : ""}';
+        return '$prefix${months > 0 ? months : 1} month${months > 1 ? "s" : ""}';
       } catch (_) {}
     }
     if (approximateAgeMonths != null && approximateAgeMonths! > 0) {
@@ -218,7 +247,7 @@ class Pet {
       if (yrs > 0) {
         return 'Approx. $yrs yr${yrs > 1 ? "s" : ""}${mos > 0 ? " $mos mo" : ""}';
       }
-      return 'Approx. $approximateAgeMonths! month${approximateAgeMonths! > 1 ? "s" : ""}';
+      return 'Approx. $approximateAgeMonths month${approximateAgeMonths! > 1 ? "s" : ""}';
     }
     return null;
   }
@@ -242,14 +271,40 @@ class Pet {
           .toList();
     }
 
+    // Comprehensive avatar URL resolution
+    String? resolvedAvatarUrl = (json['profile_photo_url'] ??
+            json['profile_media_url'] ??
+            json['avatar_url'] ??
+            json['photo_url'] ??
+            json['image_url']) as String?;
+
+    if ((resolvedAvatarUrl == null || resolvedAvatarUrl.isEmpty) && parsedMedia.isNotEmpty) {
+      final profileItem = parsedMedia.firstWhere(
+        (m) => m.isProfile && m.mediaUrl.isNotEmpty,
+        orElse: () => parsedMedia.firstWhere(
+          (m) => m.mediaUrl.isNotEmpty,
+          orElse: () => PetMedia(id: '', mediaId: '', mediaType: '', mediaUrl: '', isProfile: false, isCover: false),
+        ),
+      );
+      if (profileItem.mediaUrl.isNotEmpty) {
+        resolvedAvatarUrl = profileItem.mediaUrl;
+      }
+    }
+
+    String? resolvedCoverUrl = (json['cover_photo_url'] ??
+            json['cover_media_url'] ??
+            json['cover_url']) as String?;
+
     return Pet(
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? 'Unnamed Pet',
       species: json['species']?.toString() ?? 'DOG',
       speciesName: json['species_name'] as String?,
       breed: json['breed'] as String?,
+      breedSecondary: (json['breed_secondary'] ?? json['secondary_breed']) as String?,
       sex: json['sex'] as String?,
       dateOfBirth: json['date_of_birth'] as String?,
+      isDateOfBirthApproximate: json['is_date_of_birth_approximate'] == true,
       approximateAgeMonths: json['approximate_age_months'] is int
           ? json['approximate_age_months']
           : int.tryParse(json['approximate_age_months']?.toString() ?? ''),
@@ -259,14 +314,21 @@ class Pet {
       country: json['country'] as String?,
       state: json['state'] as String?,
       city: json['city'] as String?,
-      visibility: json['visibility']?.toString() ?? 'PUBLIC',
-      avatarUrl: (json['profile_photo_url'] ?? json['avatar_url']) as String?,
-      coverUrl: (json['cover_photo_url'] ?? json['cover_url']) as String?,
+      visibility: (json['visibility'] ?? json['profile_visibility'] ?? 'PUBLIC').toString(),
+      status: json['status']?.toString() ?? 'ACTIVE',
+      avatarUrl: resolvedAvatarUrl,
+      coverUrl: resolvedCoverUrl,
       parents: parsedParents,
       media: parsedMedia,
       permissions: json['viewer_permissions'] is Map
           ? PetViewerPermissions.fromJson(Map<String, dynamic>.from(json['viewer_permissions']))
-          : PetViewerPermissions(),
+          : PetViewerPermissions(
+              canView: true,
+              canEdit: json['can_edit'] == true,
+              canUploadMedia: json['is_parent'] == true,
+              canManageParents: json['can_manage_parents'] == true,
+              canManagePrivacy: json['can_manage_parents'] == true,
+            ),
     );
   }
 
@@ -277,8 +339,10 @@ class Pet {
       'species': species,
       'species_name': speciesName,
       'breed': breed,
+      'breed_secondary': breedSecondary,
       'sex': sex,
       'date_of_birth': dateOfBirth,
+      'is_date_of_birth_approximate': isDateOfBirthApproximate,
       'approximate_age_months': approximateAgeMonths,
       'size': size,
       'color': color,
@@ -287,6 +351,7 @@ class Pet {
       'state': state,
       'city': city,
       'visibility': visibility,
+      'status': status,
       'profile_photo_url': avatarUrl,
       'cover_photo_url': coverUrl,
       'parents': parents.map((p) => p.toJson()).toList(),
@@ -294,3 +359,50 @@ class Pet {
     };
   }
 }
+
+class PetPendingInvite {
+  final String id;
+  final String petId;
+  final String relationshipType;
+  final String status;
+  final String? createdAt;
+  final Pet? pet;
+  final PetParent? inviter;
+
+  PetPendingInvite({
+    required this.id,
+    required this.petId,
+    required this.relationshipType,
+    required this.status,
+    this.createdAt,
+    this.pet,
+    this.inviter,
+  });
+
+  factory PetPendingInvite.fromJson(Map<String, dynamic> json) {
+    return PetPendingInvite(
+      id: json['id']?.toString() ?? '',
+      petId: json['pet_id']?.toString() ?? '',
+      relationshipType: json['relationship_type']?.toString() ??
+          json['role']?.toString() ??
+          'CO_OWNER',
+      status: json['status']?.toString() ?? 'PENDING_INVITE',
+      createdAt: json['created_at']?.toString(),
+      pet: json['pet'] is Map ? Pet.fromJson(Map<String, dynamic>.from(json['pet'])) : null,
+      inviter: json['inviter'] is Map
+          ? PetParent(
+              id: json['inviter']['id']?.toString() ?? '',
+              userId: json['inviter']['id']?.toString() ?? '',
+              relationshipType: 'INVITER',
+              isPrimary: false,
+              status: 'ACTIVE',
+              username: json['inviter']['username']?.toString() ?? '',
+              fullName: json['inviter']['full_name']?.toString() ?? '',
+              avatarUrl: json['inviter']['avatar_url']?.toString() ?? '',
+              verified: json['inviter']['verified'] == true,
+            )
+          : null,
+    );
+  }
+}
+

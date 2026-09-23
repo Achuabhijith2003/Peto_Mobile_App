@@ -1127,6 +1127,139 @@ class ApiService {
       return false;
     }
   }
+
+  /// Fetch pending pet parent invitations for current user
+  Future<List<PetPendingInvite>> getPendingPetInvites() async {
+    try {
+      final response = await _dio.get('/pets/invites/pending');
+      if (response.statusCode == 200 && response.data != null) {
+        final List<dynamic>? list = response.data['data'];
+        if (list != null) {
+          return list
+              .whereType<Map>()
+              .map((inv) => PetPendingInvite.fromJson(Map<String, dynamic>.from(inv)))
+              .toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error getting pending pet invites: $e');
+    }
+    return [];
+  }
+
+  /// Respond to a pet parent invitation (Accept or Decline)
+  Future<bool> respondPetInvite(String inviteId, {String? petId, required bool accept}) async {
+    try {
+      Response response;
+      if (petId != null && petId.isNotEmpty) {
+        response = await _dio.post(
+          '/pets/$petId/parents/respond',
+          data: {'accept': accept, 'invite_id': inviteId},
+        );
+      } else {
+        response = await _dio.post(
+          '/pets/invites/$inviteId/respond',
+          data: {'accept': accept},
+        );
+      }
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error responding to pet invite: $e');
+      return false;
+    }
+  }
+
+  /// Invite a user to be a pet parent / co-owner
+  Future<Map<String, dynamic>> invitePetParent(
+    String petId, {
+    required String invitee,
+    required String relationship,
+    List<String>? permissions,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/pets/$petId/parents/invite',
+        data: {
+          'invitee': invitee,
+          'relationship': relationship,
+          if (permissions != null) 'permissions': permissions,
+        },
+      );
+      if (response.data is Map<String, dynamic>) {
+        return Map<String, dynamic>.from(response.data);
+      }
+      return {'success': true};
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      final msg = (data is Map && data['message'] != null)
+          ? data['message'].toString()
+          : (e.message ?? 'Failed to send invite');
+      return {'success': false, 'message': msg};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Remove an authorized parent from a pet
+  Future<bool> removePetParent(String petId, String parentUserId) async {
+    try {
+      final response = await _dio.delete('/pets/$petId/parents/$parentUserId');
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error removing pet parent: $e');
+      return false;
+    }
+  }
+
+  /// Attach an uploaded media item to a pet's gallery or profile
+  Future<bool> addPetMedia(
+    String petId, {
+    required String mediaId,
+    String role = 'GALLERY',
+    String? caption,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/pets/$petId/media',
+        data: {
+          'media_id': mediaId,
+          'role': role,
+          if (caption != null) 'caption': caption,
+        },
+      );
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      debugPrint('Error adding pet media: $e');
+      return false;
+    }
+  }
+
+  /// Delete a media item from a pet's showcase
+  Future<bool> deletePetMedia(String petId, String mediaId) async {
+    try {
+      final response = await _dio.delete('/pets/$petId/media/$mediaId');
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Error deleting pet media: $e');
+      return false;
+    }
+  }
+
+  /// Fetch social posts for a specific pet
+  Future<List<dynamic>> getPetPosts(String petId) async {
+    try {
+      final response = await _dio.get('/pets/$petId/posts');
+      if (response.statusCode == 200 && response.data != null) {
+        final List<dynamic>? list = response.data['posts'] ?? response.data['data'];
+        if (list != null) {
+          return list;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error getting pet posts: $e');
+    }
+    return [];
+  }
 }
 
 class MediaUploadResult {
