@@ -6,6 +6,8 @@ import '../../services/api_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/auth_prompt_bottom_sheet.dart';
+import '../../widgets/skeleton_loader.dart';
+import '../../widgets/follow_button.dart';
 import 'public_profile_screen.dart';
 
 class FollowersFollowingScreen extends StatefulWidget {
@@ -32,6 +34,7 @@ class _FollowersFollowingScreenState extends State<FollowersFollowingScreen>
 
   List<User> _followers = [];
   List<User> _following = [];
+  final Set<String> _loadingUserIds = {};
   bool _isLoading = true;
   String _searchQuery = '';
 
@@ -56,6 +59,12 @@ class _FollowersFollowingScreenState extends State<FollowersFollowingScreen>
   Future<void> _loadFollowData() async {
     setState(() => _isLoading = true);
 
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUserId = authProvider.user?.id;
+    final currentUsername = authProvider.user?.username;
+    final isSelf = currentUserId != null &&
+        (currentUserId == widget.userId || currentUsername == widget.username);
+
     try {
       dynamic followersRes;
       dynamic followingRes;
@@ -78,7 +87,14 @@ class _FollowersFollowingScreenState extends State<FollowersFollowingScreen>
         if (raw is List) {
           parsedFollowers = raw.map((item) {
             final profile = item['follower'] ?? item['profiles'] ?? item['user'] ?? item;
-            return User.fromJson(profile as Map<String, dynamic>);
+            final userMap = profile is Map<String, dynamic>
+                ? Map<String, dynamic>.from(profile)
+                : <String, dynamic>{};
+            if (item is Map<String, dynamic>) {
+              if (item.containsKey('is_following')) userMap['is_following'] = item['is_following'];
+              if (item.containsKey('isFollowing')) userMap['isFollowing'] = item['isFollowing'];
+            }
+            return User.fromJson(userMap);
           }).toList();
         }
       }
@@ -89,9 +105,45 @@ class _FollowersFollowingScreenState extends State<FollowersFollowingScreen>
         if (raw is List) {
           parsedFollowing = raw.map((item) {
             final profile = item['following'] ?? item['profiles'] ?? item['user'] ?? item;
-            return User.fromJson(profile as Map<String, dynamic>);
+            final userMap = profile is Map<String, dynamic>
+                ? Map<String, dynamic>.from(profile)
+                : <String, dynamic>{};
+            if (item is Map<String, dynamic>) {
+              if (item.containsKey('is_following')) userMap['is_following'] = item['is_following'];
+              if (item.containsKey('isFollowing')) userMap['isFollowing'] = item['isFollowing'];
+            }
+            if (isSelf) {
+              userMap['is_following'] = true;
+              userMap['isFollowing'] = true;
+            }
+            return User.fromJson(userMap);
           }).toList();
         }
+      }
+
+      // If viewing another user's profile, ensure follower/following lists accurately reflect
+      // whether the current logged-in user follows them
+      if (!isSelf && authProvider.isAuthenticated && currentUserId != null) {
+        try {
+          final myFollowingRes = await _apiService.getFollowing(currentUserId);
+          if (myFollowingRes.statusCode == 200 && myFollowingRes.data != null) {
+            final raw = myFollowingRes.data['data'] ?? myFollowingRes.data['following'] ?? [];
+            if (raw is List) {
+              final myFollowingIds = raw.map((item) {
+                final p = item['following'] ?? item['profiles'] ?? item['user'] ?? item;
+                return p['id']?.toString();
+              }).whereType<String>().toSet();
+
+              parsedFollowers = parsedFollowers.map((u) {
+                return u.copyWith(isFollowing: myFollowingIds.contains(u.id));
+              }).toList();
+
+              parsedFollowing = parsedFollowing.map((u) {
+                return u.copyWith(isFollowing: myFollowingIds.contains(u.id));
+              }).toList();
+            }
+          }
+        } catch (_) {}
       }
 
       if (mounted) {
@@ -116,9 +168,12 @@ class _FollowersFollowingScreenState extends State<FollowersFollowingScreen>
       return;
     }
 
+    if (_loadingUserIds.contains(user.id)) return;
+
     final newFollowState = !user.isFollowing;
 
     setState(() {
+      _loadingUserIds.add(user.id);
       final fIdx = _followers.indexWhere((u) => u.id == user.id);
       if (fIdx != -1) {
         _followers[fIdx] = _followers[fIdx].copyWith(isFollowing: newFollowState);
@@ -137,6 +192,13 @@ class _FollowersFollowingScreenState extends State<FollowersFollowingScreen>
       }
     } catch (e) {
       debugPrint('Follow toggle error: $e');
+      final errStr = e.toString().toLowerCase();
+      if (newFollowState && errStr.contains('already following')) {
+        return;
+      }
+      if (!newFollowState && errStr.contains('not following')) {
+        return;
+      }
       if (mounted) {
         setState(() {
           final fIdx = _followers.indexWhere((u) => u.id == user.id);
@@ -147,6 +209,12 @@ class _FollowersFollowingScreenState extends State<FollowersFollowingScreen>
           if (flIdx != -1) {
             _following[flIdx] = _following[flIdx].copyWith(isFollowing: !newFollowState);
           }
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingUserIds.remove(user.id);
         });
       }
     }
@@ -226,9 +294,7 @@ class _FollowersFollowingScreenState extends State<FollowersFollowingScreen>
           // Tab Views
           Expanded(
             child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: AppColors.primary),
-                  )
+                ? const UserListSkeleton(itemCount: 8)
                 : TabBarView(
                     controller: _tabController,
                     children: [
@@ -357,33 +423,12 @@ class _FollowersFollowingScreenState extends State<FollowersFollowingScreen>
 
               // Action Button
               if (!isSelf)
-                user.isFollowing
-                    ? OutlinedButton(
-                        onPressed: () => _toggleFollow(user, !isFollowersTab),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.onSurface,
-                          side: const BorderSide(color: AppColors.outline),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        child: const Text('Following', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                      )
-                    : ElevatedButton(
-                        onPressed: () => _toggleFollow(user, !isFollowersTab),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        child: const Text('Follow', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      ),
+                FollowButton(
+                  isFollowing: user.isFollowing,
+                  isLoading: _loadingUserIds.contains(user.id),
+                  isCompact: true,
+                  onPressed: () => _toggleFollow(user, !isFollowersTab),
+                ),
             ],
           ),
         ),

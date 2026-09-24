@@ -44,12 +44,73 @@ class PostMedia {
   Map<String, dynamic> toJson() => {'url': url, 'type': type};
 }
 
+class PostMention {
+  final String id;
+  final String username;
+  final String fullName;
+  final String? avatarUrl;
+
+  PostMention({
+    required this.id,
+    required this.username,
+    required this.fullName,
+    this.avatarUrl,
+  });
+
+  factory PostMention.fromJson(Map<String, dynamic> json) {
+    return PostMention(
+      id: json['id']?.toString() ?? '',
+      username: json['username']?.toString() ?? '',
+      fullName: json['full_name']?.toString() ?? json['username']?.toString() ?? '',
+      avatarUrl: json['avatar_url']?.toString(),
+    );
+  }
+}
+
+class PostTaggedPet {
+  final String id;
+  final String name;
+  final String species;
+  final String? breed;
+  final String? avatarUrl;
+  final String profileVisibility;
+
+  PostTaggedPet({
+    required this.id,
+    required this.name,
+    required this.species,
+    this.breed,
+    this.avatarUrl,
+    this.profileVisibility = 'PUBLIC',
+  });
+
+  factory PostTaggedPet.fromJson(Map<String, dynamic> json) {
+    String? resolvedAvatar = json['avatar_url']?.toString() ??
+        json['profile_media_url']?.toString() ??
+        json['profile_photo_url']?.toString();
+
+    if (resolvedAvatar == null && json['profile_media'] is Map) {
+      resolvedAvatar = json['profile_media']['url']?.toString();
+    }
+
+    return PostTaggedPet(
+      id: json['id']?.toString() ?? json['pet_id']?.toString() ?? '',
+      name: json['name']?.toString() ?? json['pet_name']?.toString() ?? 'Pet',
+      species: json['species']?.toString() ?? 'Other',
+      breed: json['breed']?.toString(),
+      avatarUrl: resolvedAvatar,
+      profileVisibility: json['profile_visibility']?.toString() ?? 'PUBLIC',
+    );
+  }
+}
+
 class PostComment {
   final String id;
   final String content;
   final User author;
   final DateTime createdAt;
   final String? parentCommentId;
+  final List<PostMention> mentions;
 
   PostComment({
     required this.id,
@@ -57,6 +118,7 @@ class PostComment {
     required this.author,
     required this.createdAt,
     this.parentCommentId,
+    this.mentions = const [],
   });
 
   factory PostComment.fromJson(Map<String, dynamic> json) {
@@ -77,6 +139,11 @@ class PostComment {
       commentAuthor = User(id: '', email: '', username: 'Pet Lover');
     }
 
+    final mentionsList = (json['mentions'] as List?)
+            ?.map((m) => PostMention.fromJson(m as Map<String, dynamic>))
+            .toList() ??
+        [];
+
     return PostComment(
       id: json['id']?.toString() ?? '',
       content: json['comment']?.toString() ?? json['content']?.toString() ?? '',
@@ -85,6 +152,7 @@ class PostComment {
           ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
           : DateTime.now(),
       parentCommentId: json['parent_comment_id']?.toString(),
+      mentions: mentionsList,
     );
   }
 }
@@ -101,6 +169,8 @@ class Post {
   final bool isLiked;
   final bool isBookmarked;
   final DateTime createdAt;
+  final List<PostMention> mentions;
+  final List<PostTaggedPet> taggedPets;
 
   Post({
     required this.id,
@@ -114,6 +184,8 @@ class Post {
     this.isLiked = false,
     this.isBookmarked = false,
     required this.createdAt,
+    this.mentions = const [],
+    this.taggedPets = const [],
   });
 
   factory Post.fromJson(Map<String, dynamic> json) {
@@ -130,10 +202,10 @@ class Post {
     }
 
     User authorUser;
-    if (json['author'] != null && json['author'] is Map<String, dynamic>) {
-      authorUser = User.fromJson(json['author'] as Map<String, dynamic>);
-    } else if (json['profiles'] != null && json['profiles'] is Map<String, dynamic>) {
-      final p = json['profiles'] as Map<String, dynamic>;
+    if (json['author'] != null && json['author'] is Map) {
+      authorUser = User.fromJson(Map<String, dynamic>.from(json['author'] as Map));
+    } else if (json['profiles'] != null && json['profiles'] is Map) {
+      final p = Map<String, dynamic>.from(json['profiles'] as Map);
       authorUser = User(
         id: p['id']?.toString() ?? json['user_id']?.toString() ?? '',
         email: '',
@@ -142,8 +214,8 @@ class Post {
         isVerified: p['verified'] == true || p['is_verified'] == true,
         verificationBadgeType: p['verification_badge_type']?.toString() ?? p['verificationBadgeType']?.toString(),
       );
-    } else if (json['user'] != null && json['user'] is Map<String, dynamic>) {
-      authorUser = User.fromJson(json['user'] as Map<String, dynamic>);
+    } else if (json['user'] != null && json['user'] is Map) {
+      authorUser = User.fromJson(Map<String, dynamic>.from(json['user'] as Map));
     } else {
       authorUser = User(
         id: json['user_id']?.toString() ?? '',
@@ -154,8 +226,8 @@ class Post {
       );
     }
 
-    final stats = json['stats'] is Map<String, dynamic> ? json['stats'] as Map<String, dynamic> : null;
-    final viewer = json['viewer'] is Map<String, dynamic> ? json['viewer'] as Map<String, dynamic> : null;
+    final stats = json['stats'] is Map ? Map<String, dynamic>.from(json['stats'] as Map) : null;
+    final viewer = json['viewer'] is Map ? Map<String, dynamic>.from(json['viewer'] as Map) : null;
 
     final rawLikes = json['likes_count'] ?? stats?['likes'];
     final rawComments = json['comments_count'] ?? stats?['comments'];
@@ -165,6 +237,27 @@ class Post {
 
     final isLiked = json['is_liked'] == true || viewer?['liked'] == true;
     final isBookmarked = json['is_bookmarked'] == true || viewer?['bookmarked'] == true;
+
+    final rawMentions = json['mentions'];
+    final mentionsList = (rawMentions is List)
+        ? rawMentions
+            .whereType<Map>()
+            .map((m) => PostMention.fromJson(Map<String, dynamic>.from(m)))
+            .toList()
+        : <PostMention>[];
+
+    List<PostTaggedPet> taggedPetsList = [];
+    final rawTaggedPets = json['tagged_pets'] ?? json['taggedPets'];
+    if (rawTaggedPets is List) {
+      taggedPetsList = rawTaggedPets
+          .whereType<Map>()
+          .map((p) => PostTaggedPet.fromJson(Map<String, dynamic>.from(p)))
+          .toList();
+    } else if (json['pets'] != null && json['pets'] is Map) {
+      taggedPetsList = [PostTaggedPet.fromJson(Map<String, dynamic>.from(json['pets'] as Map))];
+    } else if (json['pet'] != null && json['pet'] is Map) {
+      taggedPetsList = [PostTaggedPet.fromJson(Map<String, dynamic>.from(json['pet'] as Map))];
+    }
 
     return Post(
       id: json['id']?.toString() ?? '',
@@ -180,6 +273,8 @@ class Post {
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString()) ?? DateTime.now()
           : DateTime.now(),
+      mentions: mentionsList,
+      taggedPets: taggedPetsList,
     );
   }
 
@@ -190,6 +285,8 @@ class Post {
     int? commentsCount,
     bool? isLiked,
     bool? isBookmarked,
+    List<PostMention>? mentions,
+    List<PostTaggedPet>? taggedPets,
   }) {
     return Post(
       id: id,
@@ -203,6 +300,8 @@ class Post {
       isLiked: isLiked ?? this.isLiked,
       isBookmarked: isBookmarked ?? this.isBookmarked,
       createdAt: createdAt,
+      mentions: mentions ?? this.mentions,
+      taggedPets: taggedPets ?? this.taggedPets,
     );
   }
 }

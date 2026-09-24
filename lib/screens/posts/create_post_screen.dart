@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/post_provider.dart';
 import '../../services/media_upload_helper.dart';
+import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_button.dart';
 
@@ -24,6 +25,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   final List<PickedMediaResult> _mediaList = [];
   static const int _maxMediaCount = 5;
+
+  final List<Map<String, dynamic>> _mentionedUsers = [];
+  final List<Map<String, dynamic>> _taggedPets = [];
+  List<dynamic> _mentionSuggestions = [];
+  bool _isLoadingMentions = false;
+  String? _currentMentionQuery;
 
   @override
   void dispose() {
@@ -171,6 +178,149 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     });
   }
 
+  void _onTextChanged(String text) {
+    setState(() {});
+    final selection = _contentController.selection;
+    if (selection.baseOffset < 0) return;
+
+    final textBeforeCursor = text.substring(0, selection.baseOffset);
+    final match = RegExp(r'@([a-zA-Z0-9_]*)$').firstMatch(textBeforeCursor);
+    if (match != null) {
+      final query = match.group(1) ?? '';
+      _currentMentionQuery = query;
+      _searchMentions(query);
+    } else {
+      if (_currentMentionQuery != null) {
+        setState(() {
+          _currentMentionQuery = null;
+          _mentionSuggestions = [];
+        });
+      }
+    }
+  }
+
+  void _searchMentions(String query) async {
+    if (query.isEmpty) {
+      setState(() => _mentionSuggestions = []);
+      return;
+    }
+    setState(() => _isLoadingMentions = true);
+    try {
+      final results = await Future.wait([
+        ApiService().searchUsers(query),
+        ApiService().searchTaggablePets(query),
+      ]);
+      final userRes = results[0];
+      final petRes = results[1];
+
+      final combined = <dynamic>[];
+
+      // Taggable Pets first
+      if (petRes.statusCode == 200 && petRes.data != null) {
+        final pets = petRes.data['data'] as List? ?? [];
+        for (final p in pets) {
+          if (p is Map) {
+            combined.add({
+              ...Map<String, dynamic>.from(p),
+              'isPet': true,
+            });
+          }
+        }
+      }
+
+      // Users
+      if (userRes.statusCode == 200 && userRes.data != null) {
+        final users = userRes.data['data'] as List? ?? [];
+        for (final u in users) {
+          if (u is Map) {
+            combined.add({
+              ...Map<String, dynamic>.from(u),
+              'isPet': false,
+            });
+          }
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _mentionSuggestions = combined;
+          _isLoadingMentions = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingMentions = false);
+    }
+  }
+
+  void _selectMention(dynamic item) {
+    if (_currentMentionQuery == null) return;
+    final text = _contentController.text;
+    final selection = _contentController.selection;
+    final textBeforeCursor = text.substring(0, selection.baseOffset);
+    final textAfterCursor = text.substring(selection.baseOffset);
+
+    final isPet = item['isPet'] == true;
+    final name = isPet
+        ? (item['name']?.toString() ?? 'pet')
+        : (item['username']?.toString() ?? 'user');
+
+    final replaced = textBeforeCursor.replaceFirst(RegExp(r'@([a-zA-Z0-9_]*)$'), '@$name ');
+    final newText = replaced + textAfterCursor;
+
+    _contentController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: replaced.length),
+    );
+
+    final itemId = item['id']?.toString() ?? '';
+    if (itemId.isNotEmpty) {
+      if (isPet) {
+        if (!_taggedPets.any((p) => p['id'].toString() == itemId)) {
+          _taggedPets.add({
+            'id': itemId,
+            'name': item['name']?.toString() ?? 'Pet',
+            'species': item['species']?.toString() ?? 'Other',
+            'breed': item['breed']?.toString(),
+            'avatarUrl': item['avatar_url']?.toString(),
+          });
+        }
+      } else {
+        if (!_mentionedUsers.any((u) => u['id'].toString() == itemId)) {
+          _mentionedUsers.add({
+            'id': itemId,
+            'username': name,
+            'fullName': item['full_name']?.toString() ?? name,
+          });
+        }
+      }
+    }
+
+    setState(() {
+      _currentMentionQuery = null;
+      _mentionSuggestions = [];
+    });
+  }
+
+  void _openPetPicker() async {
+    final result = await showModalBottomSheet<List<Map<String, dynamic>>>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => _PetPickerBottomSheet(
+        initiallySelected: _taggedPets,
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        _taggedPets.clear();
+        _taggedPets.addAll(result);
+      });
+    }
+  }
+
   void _submitPost() async {
     final validMedia = _mediaList.where((m) => m.uploadedUrl != null && m.uploadedUrl!.isNotEmpty).toList();
     if (_contentController.text.trim().isEmpty && validMedia.isEmpty) return;
@@ -184,7 +334,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       mediaUrls: mediaUrls,
       mediaUrl: mediaUrls.isNotEmpty ? mediaUrls.first : null,
       communityId: widget.communityId,
-      petId: widget.petId,
+      petId: _taggedPets.isNotEmpty ? _taggedPets.first['id'].toString() : widget.petId,
+      mentionedUserIds: _mentionedUsers.map((u) => u['id']!.toString()).toList(),
+      taggedPetIds: _taggedPets.map((p) => p['id']!.toString()).toList(),
     );
 
     setState(() => _isLoading = false);
@@ -325,17 +477,151 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             TextField(
               controller: _contentController,
               maxLines: 5,
-              onChanged: (_) => setState(() {}),
+              onChanged: _onTextChanged,
               style: const TextStyle(fontSize: 16),
               decoration: const InputDecoration(
-                hintText: "What's your pet up to today?",
+                hintText: "What's on your mind? Type @ to mention someone",
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 fillColor: Colors.transparent,
               ),
             ),
-            const SizedBox(height: 16),
+
+            // Mention Suggestions Dropdown
+            if (_mentionSuggestions.isNotEmpty || _isLoadingMentions)
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppColors.outline.withValues(alpha: 0.2)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      child: Text(
+                        'Mention suggestions',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.outline),
+                      ),
+                    ),
+                    if (_isLoadingMentions)
+                      const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Center(
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                          ),
+                        ),
+                      )
+                    else
+                      ..._mentionSuggestions.map((item) {
+                        final isPet = item['isPet'] == true;
+                        final avatarUrl = item['avatar_url']?.toString();
+                        final title = isPet
+                            ? (item['name']?.toString() ?? 'Pet')
+                            : (item['full_name']?.toString() ?? item['username']?.toString() ?? 'User');
+                        final subtitle = isPet
+                            ? '🐾 Pet · ${item['species'] ?? 'Animal'}${item['breed'] != null ? ' · ${item['breed']}' : ''}'
+                            : '@${item['username'] ?? 'user'}';
+
+                        return InkWell(
+                          onTap: () => _selectMention(item),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 14,
+                                  backgroundColor: isPet
+                                      ? AppColors.secondaryContainer
+                                      : AppColors.primaryContainer,
+                                  backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
+                                      ? CachedNetworkImageProvider(avatarUrl)
+                                      : null,
+                                  child: avatarUrl == null
+                                      ? Icon(
+                                          isPet ? Icons.pets : Icons.person,
+                                          size: 14,
+                                          color: isPet ? AppColors.secondary : AppColors.primary,
+                                        )
+                                      : null,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                      Text(subtitle, style: const TextStyle(fontSize: 11, color: AppColors.outline)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ),
+
+            // Tagged Pets Badges
+            if (_taggedPets.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    const Text(
+                      'Tagged:',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.secondary),
+                    ),
+                    ..._taggedPets.map((p) => Chip(
+                          avatar: const Icon(Icons.pets, size: 14, color: AppColors.primary),
+                          label: Text(p['name']?.toString() ?? 'Pet'),
+                          deleteIcon: const Icon(Icons.close, size: 14),
+                          onDeleted: () {
+                            setState(() {
+                              _taggedPets.removeWhere((item) => item['id'] == p['id']);
+                            });
+                          },
+                          backgroundColor: AppColors.surfaceContainerHigh,
+                          padding: const EdgeInsets.all(0),
+                          labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                        )),
+                  ],
+                ),
+              ),
+            ],
+
+            // Tag Pet Button
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: OutlinedButton.icon(
+                onPressed: _openPetPicker,
+                icon: const Icon(Icons.pets, size: 16, color: AppColors.primary),
+                label: Text(
+                  _taggedPets.isEmpty ? 'Tag Pet' : 'Tag More Pets (${_taggedPets.length})',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
 
             // Attached Media Strip
             if (_mediaList.isNotEmpty) ...[
@@ -480,6 +766,172 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   ),
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PetPickerBottomSheet extends StatefulWidget {
+  final List<Map<String, dynamic>> initiallySelected;
+
+  const _PetPickerBottomSheet({required this.initiallySelected});
+
+  @override
+  State<_PetPickerBottomSheet> createState() => _PetPickerBottomSheetState();
+}
+
+class _PetPickerBottomSheetState extends State<_PetPickerBottomSheet> {
+  final _searchController = TextEditingController();
+  final List<Map<String, dynamic>> _selectedPets = [];
+  List<dynamic> _pets = [];
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedPets.addAll(widget.initiallySelected);
+    _loadPets('');
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _loadPets(String query) async {
+    setState(() => _isLoading = true);
+    try {
+      final res = await ApiService().searchTaggablePets(query);
+      if (res.statusCode == 200 && res.data != null) {
+        final list = res.data['data'] as List? ?? [];
+        if (mounted) {
+          setState(() {
+            _pets = list;
+            _isLoading = false;
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _togglePet(dynamic pet) {
+    final petId = pet['id'].toString();
+    final exists = _selectedPets.any((p) => p['id'].toString() == petId);
+    setState(() {
+      if (exists) {
+        _selectedPets.removeWhere((p) => p['id'].toString() == petId);
+      } else {
+        if (_selectedPets.length >= 5) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('You can tag up to 5 pets.')),
+          );
+          return;
+        }
+        _selectedPets.add({
+          'id': petId,
+          'name': pet['name']?.toString() ?? 'Pet',
+          'species': pet['species']?.toString() ?? 'Other',
+          'breed': pet['breed']?.toString(),
+          'avatarUrl': pet['avatar_url']?.toString(),
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.75,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Column(
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Tag Pets in Post',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.onSurface),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, _selectedPets),
+                  child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _searchController,
+              onChanged: _loadPets,
+              decoration: InputDecoration(
+                hintText: 'Search pets by name...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                filled: true,
+                fillColor: AppColors.surfaceContainerLow,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                  : _pets.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'No eligible pets found to tag',
+                            style: TextStyle(color: AppColors.outline),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: _pets.length,
+                          itemBuilder: (ctx, i) {
+                            final pet = _pets[i];
+                            final petId = pet['id'].toString();
+                            final isSelected = _selectedPets.any((p) => p['id'].toString() == petId);
+                            final avatarUrl = pet['avatar_url']?.toString();
+
+                            return CheckboxListTile(
+                              value: isSelected,
+                              activeColor: AppColors.primary,
+                              onChanged: (_) => _togglePet(pet),
+                              secondary: CircleAvatar(
+                                radius: 18,
+                                backgroundColor: AppColors.primaryContainer,
+                                backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
+                                    ? CachedNetworkImageProvider(avatarUrl)
+                                    : null,
+                                child: avatarUrl == null ? const Icon(Icons.pets, size: 18, color: AppColors.primary) : null,
+                              ),
+                              title: Text(
+                                pet['name']?.toString() ?? 'Pet',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                              subtitle: Text(
+                                '${pet['species'] ?? ''}${pet['breed'] != null ? ' • ${pet['breed']}' : ''}',
+                                style: const TextStyle(fontSize: 12, color: AppColors.outline),
+                              ),
+                            );
+                          },
+                        ),
+            ),
           ],
         ),
       ),

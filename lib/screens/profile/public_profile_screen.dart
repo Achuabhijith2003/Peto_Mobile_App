@@ -16,6 +16,8 @@ import '../../widgets/verification_badge.dart';
 import 'followers_following_screen.dart';
 import '../../models/pet_model.dart';
 import '../../widgets/pet_showcase_section.dart';
+import '../../widgets/skeleton_loader.dart';
+import '../../widgets/follow_button.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   final String userId;
@@ -58,25 +60,16 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUserId = authProvider.user?.id;
+    final isAuthenticated = authProvider.isAuthenticated;
+
     try {
-      final results = await Future.wait([
-        _apiService.getUserById(widget.userId).catchError((_) => Response(requestOptions: RequestOptions(), statusCode: 500)),
-        _apiService.getUserPosts(widget.userId).catchError((_) => Response(requestOptions: RequestOptions(), statusCode: 500)),
-        _apiService.getFollowers(widget.userId).catchError((_) => Response(requestOptions: RequestOptions(), statusCode: 500)),
-        _apiService.getFollowing(widget.userId).catchError((_) => Response(requestOptions: RequestOptions(), statusCode: 500)),
-      ]);
+      final userRes = await _apiService.getUserById(widget.userId).catchError(
+            (_) => Response(requestOptions: RequestOptions(), statusCode: 500),
+          );
 
-      try {
-        _profileAds = await _apiService.fetchFeedAds(placement: 'FEED');
-      } catch (_) {}
-      try {
-        _pets = await _apiService.getUserPets(widget.userId);
-      } catch (_) {}
-
-      final userRes = results[0];
-      final postsRes = results[1];
-      final followersRes = results[2];
-      final followingRes = results[3];
+      String resolvedId = widget.userId;
 
       if (userRes.statusCode == 200 && userRes.data != null) {
         final userData = userRes.data['data'] ?? userRes.data['user'] ?? userRes.data;
@@ -84,8 +77,42 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           final loadedUser = User.fromJson(userData);
           _user = loadedUser;
           _isFollowing = loadedUser.isFollowing;
+          _followersCount = loadedUser.followersCount;
+          _followingCount = loadedUser.followingCount;
+          resolvedId = loadedUser.id;
         }
       }
+
+      final isSelf = currentUserId != null && currentUserId == resolvedId;
+
+      final results = await Future.wait([
+        _apiService.getUserPosts(resolvedId).catchError(
+              (_) => Response(requestOptions: RequestOptions(), statusCode: 500),
+            ),
+        _apiService.getFollowers(resolvedId).catchError(
+              (_) => Response(requestOptions: RequestOptions(), statusCode: 500),
+            ),
+        _apiService.getFollowing(resolvedId).catchError(
+              (_) => Response(requestOptions: RequestOptions(), statusCode: 500),
+            ),
+        if (!isSelf && isAuthenticated)
+          _apiService.getFollowStatus(resolvedId).catchError(
+                (_) => Response(requestOptions: RequestOptions(), statusCode: 500),
+              )
+        else
+          Future.value(Response(requestOptions: RequestOptions(), statusCode: 404)),
+      ]);
+
+      try {
+        _profileAds = await _apiService.fetchFeedAds(placement: 'FEED');
+      } catch (_) {}
+      try {
+        _pets = await _apiService.getUserPets(resolvedId);
+      } catch (_) {}
+
+      final postsRes = results[0];
+      final followersRes = results[1];
+      final followingRes = results[2];
 
       if (postsRes.statusCode == 200 && postsRes.data != null) {
         final List rawPosts = postsRes.data['posts'] ?? postsRes.data['data'] ?? [];
@@ -100,6 +127,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       if (followingRes.statusCode == 200 && followingRes.data != null) {
         final List fList = followingRes.data['following'] ?? followingRes.data['data'] ?? [];
         _followingCount = fList.length;
+      }
+
+      if (!isSelf && results.length > 3) {
+        final statusRes = results[3];
+        if (statusRes.statusCode == 200 && statusRes.data != null) {
+          final isF = statusRes.data['isFollowing'] == true || statusRes.data['is_following'] == true;
+          _isFollowing = isF;
+        }
       }
     } catch (e) {
       debugPrint('Error loading public profile: $e');
@@ -119,6 +154,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
     if (_isFollowLoading) return;
 
+    final targetId = _user?.id ?? widget.userId;
     final newState = !_isFollowing;
     setState(() {
       _isFollowLoading = true;
@@ -128,17 +164,32 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
     try {
       if (newState) {
-        await _apiService.followUser(widget.userId);
+        await _apiService.followUser(targetId);
       } else {
-        await _apiService.unfollowUser(widget.userId);
+        await _apiService.unfollowUser(targetId);
       }
     } catch (e) {
       debugPrint('Follow/unfollow error: $e');
-      if (mounted) {
-        setState(() {
-          _isFollowing = !newState;
-          _followersCount += !newState ? 1 : (_followersCount > 0 ? -1 : 0);
-        });
+      final errStr = e.toString().toLowerCase();
+      if (newState && errStr.contains('already following')) {
+        if (mounted) {
+          setState(() {
+            _isFollowing = true;
+          });
+        }
+      } else if (!newState && errStr.contains('not following')) {
+        if (mounted) {
+          setState(() {
+            _isFollowing = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _isFollowing = !newState;
+            _followersCount += !newState ? 1 : (_followersCount > 0 ? -1 : 0);
+          });
+        }
       }
     } finally {
       if (mounted) {
@@ -181,14 +232,43 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           ],
         ),
       ),
-      body: _isLoading && _user == null
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadData,
-              color: AppColors.primary,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: Column(
+      body: _isLoading
+          ? const ProfileSkeleton()
+          : _user == null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.person_off_outlined, size: 56, color: AppColors.onSurfaceVariant),
+                        const SizedBox(height: 16),
+                        Text(
+                          'User @${widget.initialUser?.username ?? widget.userId} not found',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.onSurface),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'The user profile may have been removed or does not exist.',
+                          style: TextStyle(fontSize: 13, color: AppColors.onSurfaceVariant),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 20),
+                        OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Go Back'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadData,
+                  color: AppColors.primary,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Header with Cover & Avatar
@@ -296,31 +376,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                 ),
                               ),
                               if (!isSelf)
-                                _isFollowing
-                                    ? OutlinedButton(
-                                        onPressed: _isFollowLoading ? null : _toggleFollow,
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor: AppColors.onSurface,
-                                          side: const BorderSide(color: AppColors.outline),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(20),
-                                          ),
-                                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                                        ),
-                                        child: const Text('Following', style: TextStyle(fontWeight: FontWeight.w600)),
-                                      )
-                                    : ElevatedButton(
-                                        onPressed: _isFollowLoading ? null : _toggleFollow,
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: AppColors.primary,
-                                          foregroundColor: Colors.white,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(20),
-                                          ),
-                                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                                        ),
-                                        child: const Text('Follow', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      ),
+                                FollowButton(
+                                  isFollowing: _isFollowing,
+                                  isLoading: _isFollowLoading,
+                                  onPressed: _toggleFollow,
+                                ),
                             ],
                           ),
 
@@ -361,7 +421,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                     context,
                                     MaterialPageRoute(
                                       builder: (_) => FollowersFollowingScreen(
-                                        userId: widget.userId,
+                                        userId: _user?.id ?? widget.userId,
                                         username: username,
                                         initialIndex: 0,
                                       ),
@@ -378,7 +438,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                     context,
                                     MaterialPageRoute(
                                       builder: (_) => FollowersFollowingScreen(
-                                        userId: widget.userId,
+                                        userId: _user?.id ?? widget.userId,
                                         username: username,
                                         initialIndex: 1,
                                       ),

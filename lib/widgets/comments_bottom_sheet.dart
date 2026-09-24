@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import '../models/post_model.dart';
+import '../models/user_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/post_provider.dart';
 import '../theme/app_theme.dart';
+import '../screens/profile/public_profile_screen.dart';
 import 'auth_prompt_bottom_sheet.dart';
 
 class CommentsBottomSheet extends StatefulWidget {
@@ -176,6 +179,101 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
     return DateFormat.MMMd().format(dt);
   }
 
+  void _openUserProfile(User author) {
+    final targetId = author.id.isNotEmpty ? author.id : author.username;
+    if (targetId.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PublicProfileScreen(
+          userId: targetId,
+          initialUser: author,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCommentContentWithMentions(String text, List<PostMention> mentions, {double fontSize = 14}) {
+    if (text.isEmpty) return const SizedBox.shrink();
+
+    final mentionMap = <String, PostMention>{};
+    for (final m in mentions) {
+      if (m.username.isNotEmpty) {
+        mentionMap[m.username.toLowerCase()] = m;
+      }
+    }
+
+    final spans = <InlineSpan>[];
+    final regex = RegExp(r'(@[a-zA-Z0-9_]+)');
+    int lastIndex = 0;
+
+    for (final match in regex.allMatches(text)) {
+      if (match.start > lastIndex) {
+        spans.add(TextSpan(
+          text: text.substring(lastIndex, match.start),
+          style: TextStyle(
+            fontSize: fontSize,
+            height: 1.3,
+            color: AppColors.onSurface,
+          ),
+        ));
+      }
+
+      final mentionTag = match.group(0)!;
+      final rawUsername = mentionTag.substring(1).toLowerCase();
+      final mentionInfo = mentionMap[rawUsername];
+
+      spans.add(TextSpan(
+        text: mentionTag,
+        style: TextStyle(
+          fontSize: fontSize,
+          height: 1.3,
+          fontWeight: FontWeight.bold,
+          color: AppColors.primary,
+        ),
+        recognizer: TapGestureRecognizer()
+          ..onTap = () {
+            final targetId = (mentionInfo?.id != null && mentionInfo!.id.isNotEmpty)
+                ? mentionInfo.id
+                : rawUsername;
+            final targetUsername = (mentionInfo?.username != null && mentionInfo!.username.isNotEmpty)
+                ? mentionInfo.username
+                : rawUsername;
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => PublicProfileScreen(
+                  userId: targetId,
+                  initialUser: User(
+                    id: targetId,
+                    email: '',
+                    username: targetUsername,
+                    fullName: mentionInfo?.fullName,
+                    avatarUrl: mentionInfo?.avatarUrl,
+                  ),
+                ),
+              ),
+            );
+          },
+      ));
+
+      lastIndex = match.end;
+    }
+
+    if (lastIndex < text.length) {
+      spans.add(TextSpan(
+        text: text.substring(lastIndex),
+        style: TextStyle(
+          fontSize: fontSize,
+          height: 1.3,
+          color: AppColors.onSurface,
+        ),
+      ));
+    }
+
+    return Text.rich(TextSpan(children: spans));
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
@@ -344,12 +442,15 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                                             children: [
                                               Row(
                                                 children: [
-                                                  Text(
-                                                    comment.author.username,
-                                                    style: const TextStyle(
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 13,
-                                                      color: AppColors.onSurface,
+                                                  GestureDetector(
+                                                    onTap: () => _openUserProfile(comment.author),
+                                                    child: Text(
+                                                      comment.author.username,
+                                                      style: const TextStyle(
+                                                        fontWeight: FontWeight.bold,
+                                                        fontSize: 13,
+                                                        color: AppColors.onSurface,
+                                                      ),
                                                     ),
                                                   ),
                                                   const SizedBox(width: 8),
@@ -363,14 +464,7 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                                                 ],
                                               ),
                                               const SizedBox(height: 3),
-                                              Text(
-                                                comment.content,
-                                                style: const TextStyle(
-                                                  fontSize: 14,
-                                                  height: 1.3,
-                                                  color: AppColors.onSurface,
-                                                ),
-                                              ),
+                                              _buildCommentContentWithMentions(comment.content, comment.mentions),
                                               const SizedBox(height: 6),
                                               GestureDetector(
                                                 onTap: () => _handleReplyClick(comment),
@@ -487,12 +581,15 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                                                       children: [
                                                         Row(
                                                           children: [
-                                                            Text(
-                                                              reply.author.username,
-                                                              style: const TextStyle(
-                                                                fontWeight: FontWeight.bold,
-                                                                fontSize: 12,
-                                                                color: AppColors.onSurface,
+                                                            GestureDetector(
+                                                              onTap: () => _openUserProfile(reply.author),
+                                                              child: Text(
+                                                                reply.author.username,
+                                                                style: const TextStyle(
+                                                                  fontWeight: FontWeight.bold,
+                                                                  fontSize: 12,
+                                                                  color: AppColors.onSurface,
+                                                                ),
                                                               ),
                                                             ),
                                                             const SizedBox(width: 6),
@@ -506,14 +603,7 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                                                           ],
                                                         ),
                                                         const SizedBox(height: 2),
-                                                        Text(
-                                                          reply.content,
-                                                          style: const TextStyle(
-                                                            fontSize: 13,
-                                                            height: 1.25,
-                                                            color: AppColors.onSurface,
-                                                          ),
-                                                        ),
+                                                        _buildCommentContentWithMentions(reply.content, reply.mentions, fontSize: 13),
                                                         const SizedBox(height: 4),
                                                         GestureDetector(
                                                           onTap: () => _handleReplyClick(reply),

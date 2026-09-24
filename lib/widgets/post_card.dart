@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -14,6 +15,8 @@ import '../screens/profile/public_profile_screen.dart';
 import 'report_bottom_sheet.dart';
 import 'image_viewer_screen.dart';
 import 'verification_badge.dart';
+import '../screens/pets/pet_profile_screen.dart';
+import '../models/user_model.dart';
 
 class PostCard extends StatelessWidget {
   final Post post;
@@ -55,6 +58,148 @@ class PostCard extends StatelessWidget {
         builder: (_) => PublicProfileScreen(
           userId: post.author.id,
           initialUser: post.author,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContentWithMentions(
+    BuildContext context,
+    String text,
+    List<PostMention> mentions,
+    List<PostTaggedPet> taggedPets,
+  ) {
+    if (text.isEmpty) return const SizedBox.shrink();
+
+    final mentionMap = <String, PostMention>{};
+    for (final m in mentions) {
+      if (m.username.isNotEmpty) {
+        mentionMap[m.username.toLowerCase()] = m;
+      }
+    }
+
+    final petMap = <String, PostTaggedPet>{};
+    for (final pet in taggedPets) {
+      if (pet.name.isNotEmpty) {
+        final clean = pet.name.trim().toLowerCase();
+        petMap[clean] = pet;
+        petMap[clean.replaceAll(' ', '_')] = pet;
+        petMap[clean.replaceAll(' ', '')] = pet;
+        petMap[clean.replaceAll('-', '_')] = pet;
+      }
+      if (pet.id.isNotEmpty) {
+        petMap[pet.id.toLowerCase()] = pet;
+      }
+    }
+
+    final spans = <InlineSpan>[];
+    final regex = RegExp(r'(@[a-zA-Z0-9_]+)');
+    int lastIndex = 0;
+
+    for (final match in regex.allMatches(text)) {
+      if (match.start > lastIndex) {
+        spans.add(TextSpan(
+          text: text.substring(lastIndex, match.start),
+          style: const TextStyle(
+            fontSize: 15,
+            height: 1.4,
+            color: AppColors.onSurface,
+          ),
+        ));
+      }
+
+      final mentionTag = match.group(0)!;
+      final rawKey = mentionTag.substring(1).toLowerCase();
+
+      // Check if it matches a tagged pet first
+      PostTaggedPet? matchedPet = petMap[rawKey];
+      if (matchedPet == null && taggedPets.isNotEmpty) {
+        for (final p in taggedPets) {
+          final pName = p.name.trim().toLowerCase();
+          if (pName.contains(rawKey) || rawKey.contains(pName.replaceAll(' ', ''))) {
+            matchedPet = p;
+            break;
+          }
+        }
+      }
+
+      if (matchedPet != null) {
+        final petToOpen = matchedPet;
+        spans.add(TextSpan(
+          text: mentionTag,
+          style: const TextStyle(
+            fontSize: 15,
+            height: 1.4,
+            fontWeight: FontWeight.bold,
+            color: AppColors.primary,
+          ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PetProfileScreen(petId: petToOpen.id),
+                ),
+              );
+            },
+        ));
+      } else {
+        final mentionInfo = mentionMap[rawKey];
+        spans.add(TextSpan(
+          text: mentionTag,
+          style: const TextStyle(
+            fontSize: 15,
+            height: 1.4,
+            fontWeight: FontWeight.bold,
+            color: AppColors.primary,
+          ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () {
+              _navigateToMentionProfile(context, rawKey, mentionInfo);
+            },
+        ));
+      }
+
+      lastIndex = match.end;
+    }
+
+    if (lastIndex < text.length) {
+      spans.add(TextSpan(
+        text: text.substring(lastIndex),
+        style: const TextStyle(
+          fontSize: 15,
+          height: 1.4,
+          color: AppColors.onSurface,
+        ),
+      ));
+    }
+
+    return Text.rich(
+      TextSpan(children: spans),
+    );
+  }
+
+  void _navigateToMentionProfile(BuildContext context, String rawUsername, PostMention? mentionInfo) {
+    final targetId = (mentionInfo?.id != null && mentionInfo!.id.isNotEmpty)
+        ? mentionInfo.id
+        : rawUsername;
+
+    final targetUsername = (mentionInfo?.username != null && mentionInfo!.username.isNotEmpty)
+        ? mentionInfo.username
+        : rawUsername;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PublicProfileScreen(
+          userId: targetId,
+          initialUser: User(
+            id: targetId,
+            email: '',
+            username: targetUsername,
+            fullName: mentionInfo?.fullName,
+            avatarUrl: mentionInfo?.avatarUrl,
+          ),
         ),
       ),
     );
@@ -271,7 +416,62 @@ class PostCard extends StatelessWidget {
                             ],
                           ),
                         ),
+                        if (post.taggedPets.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              const Text(
+                                'with ',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.onSurfaceVariant,
+                                ),
+                              ),
+                              ...post.taggedPets.asMap().entries.map((entry) {
+                                final idx = entry.key;
+                                final pet = entry.value;
+                                final isLast = idx == post.taggedPets.length - 1;
+                                return GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => PetProfileScreen(petId: pet.id),
+                                      ),
+                                    );
+                                  },
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.pets, size: 11, color: AppColors.primary),
+                                      const SizedBox(width: 2),
+                                      Text(
+                                        pet.name,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.primary,
+                                        ),
+                                      ),
+                                      if (!isLast)
+                                        const Text(
+                                          ', ',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: AppColors.onSurfaceVariant,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                );
+                              }),
+                            ],
+                          ),
+                        ],
                         if (post.communityName != null) ...[
+                          const SizedBox(height: 2),
                           Text(
                             'in ${post.communityName}',
                             style: const TextStyle(
@@ -383,15 +583,70 @@ class PostCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
 
-              // Content text
+              // Content text with clickable @mentions and pet mentions
               if (post.content.isNotEmpty) ...[
-                Text(
-                  post.content,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    height: 1.4,
-                    color: AppColors.onSurface,
-                  ),
+                _buildContentWithMentions(context, post.content, post.mentions, post.taggedPets),
+              ],
+
+              // Tagged Pets Badges
+              if (post.taggedPets.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: post.taggedPets.map((pet) {
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PetProfileScreen(petId: pet.id),
+                            ),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryContainer.withValues(alpha: 0.25),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: AppColors.primary.withValues(alpha: 0.35),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (pet.avatarUrl != null && pet.avatarUrl!.isNotEmpty)
+                                ClipOval(
+                                  child: CachedNetworkImage(
+                                    imageUrl: pet.avatarUrl!,
+                                    width: 18,
+                                    height: 18,
+                                    fit: BoxFit.cover,
+                                    errorWidget: (_, _, _) => const Icon(Icons.pets, size: 14, color: AppColors.primary),
+                                  ),
+                                )
+                              else
+                                const Icon(Icons.pets, size: 14, color: AppColors.primary),
+                              const SizedBox(width: 6),
+                              Text(
+                                pet.name,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.onSurface,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
               ],
 

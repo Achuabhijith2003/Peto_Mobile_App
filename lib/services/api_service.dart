@@ -186,6 +186,10 @@ class ApiService {
     return await _dio.get('/users/search', queryParameters: {'q': query});
   }
 
+  Future<Response> searchTaggablePets(String query) async {
+    return await _dio.get('/pets/taggable', queryParameters: {'q': query});
+  }
+
   Future<Response> getUserById(String id) async {
     return await _dio.get('/users/$id');
   }
@@ -211,6 +215,10 @@ class ApiService {
 
   Future<Response> getFollowing(String userId) async {
     return await _dio.get('/user/$userId/following');
+  }
+
+  Future<Response> getFollowStatus(String targetUserId) async {
+    return await _dio.get('/user/$targetUserId/follow-status');
   }
 
   // ----------------------
@@ -1182,7 +1190,7 @@ class ApiService {
         data: {
           'invitee': invitee,
           'relationship': relationship,
-          if (permissions != null) 'permissions': permissions,
+          'permissions': ?permissions,
         },
       );
       if (response.data is Map<String, dynamic>) {
@@ -1224,7 +1232,7 @@ class ApiService {
         data: {
           'media_id': mediaId,
           'role': role,
-          if (caption != null) 'caption': caption,
+          'caption': ?caption,
         },
       );
       return response.statusCode == 200 || response.statusCode == 201;

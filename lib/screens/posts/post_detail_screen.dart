@@ -53,9 +53,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       final response = await _apiService.getPostById(widget.postId);
       if (response.statusCode == 200 && response.data != null) {
         final postData = response.data['data'] ?? response.data['post'] ?? response.data;
-        if (postData != null && postData is Map<String, dynamic>) {
+        if (postData != null && postData is Map) {
           setState(() {
-            _post = Post.fromJson(postData);
+            _post = Post.fromJson(Map<String, dynamic>.from(postData));
             _isLoading = false;
           });
 

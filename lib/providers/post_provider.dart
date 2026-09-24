@@ -117,6 +117,8 @@ class PostProvider extends ChangeNotifier {
     String? mediaUrl,
     String? communityId,
     String? petId,
+    List<String>? mentionedUserIds,
+    List<String>? taggedPetIds,
   }) async {
     try {
       final List<String> allMedia = [];
@@ -126,14 +128,22 @@ class PostProvider extends ChangeNotifier {
         allMedia.add(mediaUrl);
       }
 
-      final response = await _apiService.createPost({
+      final payload = <String, dynamic>{
         'content': content,
         'text': content,
         'media': allMedia,
         'media_url': allMedia.isNotEmpty ? allMedia.first : null,
         'community_id': communityId,
-        if (petId != null) 'pet_id': petId,
-      });
+      };
+      if (petId != null) payload['pet_id'] = petId;
+      if (mentionedUserIds != null && mentionedUserIds.isNotEmpty) {
+        payload['mentioned_user_ids'] = mentionedUserIds;
+      }
+      if (taggedPetIds != null && taggedPetIds.isNotEmpty) {
+        payload['tagged_pet_ids'] = taggedPetIds;
+      }
+
+      final response = await _apiService.createPost(payload);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         await fetchPosts(category: _selectedCategory, refresh: true);

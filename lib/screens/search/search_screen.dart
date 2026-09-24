@@ -16,6 +16,8 @@ import '../../widgets/comments_bottom_sheet.dart';
 import '../../widgets/auth_prompt_bottom_sheet.dart';
 import '../community/community_detail_screen.dart';
 import '../profile/public_profile_screen.dart';
+import '../../widgets/skeleton_loader.dart';
+import '../../widgets/follow_button.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -186,7 +188,16 @@ class _SearchScreenState extends State<SearchScreen>
       }
     } catch (e) {
       debugPrint('Follow toggle failed: $e');
-      // Revert on failure
+      final errStr = e.toString().toLowerCase();
+      if (newFollowState && errStr.contains('already following')) {
+        // Keep as followed
+        return;
+      }
+      if (!newFollowState && errStr.contains('not following')) {
+        // Keep as unfollowed
+        return;
+      }
+      // Revert on real failure
       if (mounted) {
         setState(() {
           final index = _users.indexWhere((u) => u.id == user.id);
@@ -606,6 +617,10 @@ class _SearchScreenState extends State<SearchScreen>
 
   // Users Tab
   Widget _buildUsersList() {
+    if (_isLoading) {
+      return const UserListSkeleton(itemCount: 6);
+    }
+
     if (_users.isEmpty) {
       return _buildEmptyState('No users found for "${_searchController.text}".');
     }
@@ -703,33 +718,11 @@ class _SearchScreenState extends State<SearchScreen>
 
               // Follow / Unfollow Action Button
               if (!isSelf)
-                user.isFollowing
-                    ? OutlinedButton(
-                        onPressed: () => _toggleFollowUser(user),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.onSurface,
-                          side: const BorderSide(color: AppColors.outline),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        child: const Text('Following', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                      )
-                    : ElevatedButton(
-                        onPressed: () => _toggleFollowUser(user),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        child: const Text('Follow', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      ),
+                FollowButton(
+                  isFollowing: user.isFollowing,
+                  isCompact: true,
+                  onPressed: () => _toggleFollowUser(user),
+                ),
             ],
           ),
         ),
