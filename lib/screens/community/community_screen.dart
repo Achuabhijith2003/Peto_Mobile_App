@@ -89,13 +89,13 @@ class _CommunityScreenState extends State<CommunityScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline, color: AppColors.primary),
-            tooltip: 'Create Circle',
-            onPressed: () => _openCreateCommunity(context, authProvider),
-          ),
-        ],
+        // actions: [
+        //   IconButton(
+        //     icon: const Icon(Icons.add_circle_outline, color: AppColors.primary),
+        //     tooltip: 'Create Circle',
+        //     onPressed: () => _openCreateCommunity(context, authProvider),
+        //   ),
+        // ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openCreateCommunity(context, authProvider),

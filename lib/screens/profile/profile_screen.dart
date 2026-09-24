@@ -312,16 +312,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.bookmark_outline),
-            tooltip: 'Saved Posts',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const BookmarksScreen()),
-              );
-            },
-          ),
+          // IconButton(
+          //   icon: const Icon(Icons.bookmark_outline),
+          //   tooltip: 'Saved Posts',
+          //   onPressed: () {
+          //     Navigator.push(
+          //       context,
+          //       MaterialPageRoute(builder: (_) => const BookmarksScreen()),
+          //     );
+          //   },
+          // ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Settings',
@@ -333,11 +333,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _loadProfileData();
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: AppColors.error),
-            tooltip: 'Sign Out',
-            onPressed: () => authProvider.logout(),
-          ),
+          // IconButton(
+          //   icon: const Icon(Icons.logout, color: AppColors.error),
+          //   tooltip: 'Sign Out',
+          //   onPressed: () => authProvider.logout(),
+          // ),
         ],
       ),
       body: RefreshIndicator(
@@ -445,12 +445,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                               padding: const EdgeInsets.all(8),
                             ),
-                            icon: const Icon(Icons.settings_outlined, size: 18, color: AppColors.onSurface),
-                            tooltip: 'Settings',
+                            icon: const Icon(Icons.bookmark_outline, size: 18, color: AppColors.onSurface),
+                            tooltip: 'Saved Posts',
                             onPressed: () async {
                               await Navigator.push(
                                 context,
-                                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                                MaterialPageRoute(builder: (_) => const BookmarksScreen()),
                               );
                               _loadProfileData();
                             },
