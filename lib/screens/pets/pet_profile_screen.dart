@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
+import 'package:video_player/video_player.dart';
 import '../../models/pet_model.dart';
-import '../../models/post_model.dart';
 import '../../services/api_service.dart';
 import '../../services/media_upload_helper.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/post_provider.dart';
-import '../../widgets/post_card.dart';
-import '../posts/create_post_screen.dart';
 
 class PetProfileScreen extends StatefulWidget {
   final String petId;
@@ -33,10 +30,6 @@ class _PetProfileScreenState extends State<PetProfileScreen> with SingleTickerPr
   bool _isLoading = true;
   String? _errorMessage;
 
-  // Posts tab
-  List<Post> _petPosts = [];
-  bool _isLoadingPosts = false;
-
   // Actions loading
   bool _isActionLoading = false;
   bool _isUploadingPhoto = false;
@@ -45,12 +38,7 @@ class _PetProfileScreenState extends State<PetProfileScreen> with SingleTickerPr
   void initState() {
     super.initState();
     _pet = widget.initialPet;
-    _tabController = TabController(length: 3, vsync: this);
-    _tabController.addListener(() {
-      if (_tabController.index == 2 && _petPosts.isEmpty && !_isLoadingPosts) {
-        _loadPetPosts();
-      }
-    });
+    _tabController = TabController(length: 2, vsync: this);
 
     _fetchPetDetails();
   }
@@ -92,26 +80,10 @@ class _PetProfileScreenState extends State<PetProfileScreen> with SingleTickerPr
     }
   }
 
-  Future<void> _loadPetPosts() async {
-    setState(() => _isLoadingPosts = true);
-    try {
-      final rawList = await _apiService.getPetPosts(widget.petId);
-      if (mounted) {
-        setState(() {
-          _petPosts = rawList
-              .whereType<Map>()
-              .map((p) => Post.fromJson(Map<String, dynamic>.from(p)))
-              .toList();
-          _isLoadingPosts = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading pet posts: $e');
-      if (mounted) setState(() => _isLoadingPosts = false);
-    }
-  }
+
 
   void _showEnlargedPhoto(String photoUrl) {
+    if (photoUrl.isEmpty) return;
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -156,29 +128,89 @@ class _PetProfileScreenState extends State<PetProfileScreen> with SingleTickerPr
     );
   }
 
+  void _showEnlargedVideo(String videoUrl) {
+    if (videoUrl.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => _PetVideoPlayerDialog(videoUrl: videoUrl),
+    );
+  }
+
+  Future<void> _confirmDeleteMedia(PetMedia item) async {
+    final pet = _pet;
+    if (pet == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(item.isVideo ? 'Remove Video' : 'Remove Photo'),
+        content: Text(
+          'Are you sure you want to remove this ${item.isVideo ? 'video' : 'photo'} from ${pet.name}\'s showcase gallery?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final targetId = item.id.isNotEmpty ? item.id : item.mediaId;
+      final success = await _apiService.deletePetMedia(pet.id, targetId);
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${item.isVideo ? 'Video' : 'Photo'} removed from gallery.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _fetchPetDetails();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to remove media from gallery.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _uploadGalleryPhoto() async {
     final pet = _pet;
     if (pet == null) return;
 
     final uploadResult = await MediaUploadHelper.showPickerAndUpload(
       context,
-      title: 'Upload Showcase Photo',
-      allowVideo: false,
+      title: 'Add to Showcase (Photo / Video)',
+      allowVideo: true,
     );
 
-    if (uploadResult != null && uploadResult.mediaId != null) {
+    if (uploadResult != null && (uploadResult.mediaId != null || uploadResult.uploadedUrl != null)) {
       setState(() => _isUploadingPhoto = true);
       try {
         final success = await _apiService.addPetMedia(
           pet.id,
-          mediaId: uploadResult.mediaId!,
+          mediaId: uploadResult.mediaId ?? '',
+          mediaUrl: uploadResult.uploadedUrl,
           role: 'GALLERY',
         );
 
         if (success && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Photo added to pet gallery!'),
+            SnackBar(
+              content: Text(uploadResult.isVideo
+                  ? 'Video added to pet showcase!'
+                  : 'Photo added to pet showcase!'),
               backgroundColor: Colors.green,
             ),
           );
@@ -186,7 +218,7 @@ class _PetProfileScreenState extends State<PetProfileScreen> with SingleTickerPr
         } else if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Failed to link photo to gallery.'),
+              content: Text('Failed to link media to gallery.'),
               backgroundColor: AppColors.error,
             ),
           );
@@ -577,10 +609,6 @@ class _PetProfileScreenState extends State<PetProfileScreen> with SingleTickerPr
                       icon: const Icon(Icons.photo_library_outlined, size: 18),
                       text: 'Gallery (${pet.media.length})',
                     ),
-                    const Tab(
-                      icon: Icon(Icons.feed_outlined, size: 18),
-                      text: 'Posts',
-                    ),
                   ],
                 ),
               ),
@@ -595,9 +623,6 @@ class _PetProfileScreenState extends State<PetProfileScreen> with SingleTickerPr
 
             // Tab 2: Gallery
             _buildGalleryTab(pet, canUpload),
-
-            // Tab 3: Posts
-            _buildPostsTab(pet),
           ],
         ),
       ),
@@ -843,12 +868,12 @@ class _PetProfileScreenState extends State<PetProfileScreen> with SingleTickerPr
               const Icon(Icons.photo_library_outlined, size: 56, color: AppColors.surfaceContainerHigh),
               const SizedBox(height: 12),
               const Text(
-                'No Showcase Photos Yet',
+                'No Showcase Media Yet',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.onSurface),
               ),
               const SizedBox(height: 6),
               const Text(
-                'Upload photos to create a visual gallery for this pet!',
+                'Upload photos and videos to create a visual gallery for this pet!',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
               ),
@@ -859,7 +884,7 @@ class _PetProfileScreenState extends State<PetProfileScreen> with SingleTickerPr
                   icon: _isUploadingPhoto
                       ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.add_photo_alternate, size: 16),
-                  label: const Text('Add First Photo'),
+                  label: const Text('Add Photo or Video'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
@@ -872,175 +897,230 @@ class _PetProfileScreenState extends State<PetProfileScreen> with SingleTickerPr
       );
     }
 
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 1.0,
+    final col1 = <Widget>[];
+    final col2 = <Widget>[];
+
+    if (canUpload) {
+      col1.add(_buildAddMediaCard());
+    }
+
+    for (int i = 0; i < mediaList.length; i++) {
+      final item = mediaList[i];
+      final tile = _buildGalleryMediaTile(item, canUpload);
+      // Alternate between columns
+      final slotIndex = canUpload ? i + 1 : i;
+      if (slotIndex % 2 == 0) {
+        col1.add(tile);
+      } else {
+        col2.add(tile);
+      }
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: col1,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: col2,
+            ),
+          ),
+        ],
       ),
-      itemCount: mediaList.length + (canUpload ? 1 : 0),
-      itemBuilder: (context, index) {
-        if (index == 0 && canUpload) {
-          return InkWell(
-            onTap: _isUploadingPhoto ? null : _uploadGalleryPhoto,
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppColors.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: AppColors.primary.withValues(alpha: 0.3),
-                  style: BorderStyle.solid,
-                  width: 1.5,
-                ),
-              ),
-              child: Center(
-                child: _isUploadingPhoto
-                    ? const CircularProgressIndicator()
-                    : const Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.add_a_photo_outlined, size: 28, color: AppColors.primary),
-                          SizedBox(height: 6),
-                          Text(
-                            'Add Photo',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
-                          ),
-                        ],
+    );
+  }
+
+  Widget _buildAddMediaCard() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: _isUploadingPhoto ? null : _uploadGalleryPhoto,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: 130,
+          decoration: BoxDecoration(
+            color: AppColors.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: AppColors.primary.withValues(alpha: 0.35),
+              width: 1.5,
+            ),
+          ),
+          child: Center(
+            child: _isUploadingPhoto
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add_photo_alternate_outlined, size: 28, color: AppColors.primary),
+                      SizedBox(height: 6),
+                      Text(
+                        'Add Media',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary),
                       ),
+                    ],
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGalleryMediaTile(PetMedia item, bool canUpload) {
+    final isVideo = item.isVideo;
+    final displayUrl = (isVideo && item.thumbnailUrl != null && item.thumbnailUrl!.isNotEmpty)
+        ? item.thumbnailUrl!
+        : item.mediaUrl;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: GestureDetector(
+        onTap: () {
+          if (isVideo) {
+            _showEnlargedVideo(item.mediaUrl);
+          } else {
+            _showEnlargedPhoto(item.mediaUrl);
+          }
+        },
+        onLongPress: canUpload ? () => _confirmDeleteMedia(item) : null,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: Colors.black12,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
               ),
-            ),
-          );
-        }
-
-        final actualIndex = canUpload ? index - 1 : index;
-        final item = mediaList[actualIndex];
-
-        return GestureDetector(
-          onTap: () => _showEnlargedPhoto(item.mediaUrl),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.surfaceContainerHigh),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(15),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              children: [
+                if (displayUrl.isNotEmpty)
                   CachedNetworkImage(
-                    imageUrl: item.mediaUrl,
-                    fit: BoxFit.cover,
+                    imageUrl: displayUrl,
+                    fit: BoxFit.fitWidth,
+                    width: double.infinity,
                     placeholder: (context, url) => Container(
+                      height: 140,
                       color: AppColors.surfaceContainerLow,
                       child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                     ),
                     errorWidget: (context, url, error) => Container(
-                      color: AppColors.surfaceContainerLow,
-                      child: const Icon(Icons.broken_image, color: Colors.grey),
+                      height: 120,
+                      color: Colors.black87,
+                      child: Center(
+                        child: Icon(
+                          isVideo ? Icons.videocam : Icons.broken_image,
+                          color: Colors.white54,
+                          size: 26,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    height: 120,
+                    color: Colors.black87,
+                    child: Center(
+                      child: Icon(
+                        isVideo ? Icons.videocam : Icons.image,
+                        color: Colors.white54,
+                        size: 26,
+                      ),
                     ),
                   ),
+
+                // Video center play badge overlay
+                if (isVideo)
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.55),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white70, width: 1.2),
+                          ),
+                          child: const Icon(Icons.play_arrow_rounded, size: 24, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Video badge indicator (top-right)
+                if (isVideo)
                   Positioned(
-                    bottom: 6,
+                    top: 6,
                     right: 6,
                     child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Colors.black54,
-                        shape: BoxShape.circle,
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(4),
                       ),
-                      child: const Icon(Icons.fullscreen, size: 14, color: Colors.white),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.videocam, size: 10, color: Colors.white),
+                          SizedBox(width: 3),
+                          Text(
+                            'VIDEO',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              letterSpacing: 0.4,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ],
-              ),
+
+                // Delete button for owners/caregivers (top-left)
+                if (canUpload)
+                  Positioned(
+                    top: 6,
+                    left: 6,
+                    child: GestureDetector(
+                      onTap: () => _confirmDeleteMedia(item),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.close, size: 14, color: Colors.white),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
-        );
-      },
-    );
-  }
-
-  // ----------------------------------------------------
-  // TAB 3: POSTS
-  // ----------------------------------------------------
-  Widget _buildPostsTab(Pet pet) {
-    if (_isLoadingPosts) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_petPosts.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.feed_outlined, size: 56, color: AppColors.surfaceContainerHigh),
-              const SizedBox(height: 12),
-              Text(
-                'No Posts for ${pet.name} Yet',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.onSurface),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Share moments, milestones, or stories about ${pet.name} with the community!',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12, color: AppColors.onSurfaceVariant),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (ctx) => CreatePostScreen(petId: pet.id),
-                    ),
-                  );
-                  _loadPetPosts();
-                },
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Create Pet Post'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ],
-          ),
         ),
-      );
-    }
-
-    final postProvider = Provider.of<PostProvider>(context, listen: false);
-
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: _petPosts.length,
-      itemBuilder: (context, index) {
-        final post = _petPosts[index];
-        return PostCard(
-          post: post,
-          onLike: () => postProvider.toggleLike(post.id),
-          onBookmark: () => postProvider.toggleBookmark(post.id),
-          onPostDeleted: () {
-            setState(() {
-              _petPosts.removeWhere((p) => p.id == post.id);
-            });
-          },
-        );
-      },
+      ),
     );
   }
+
 }
 
 class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
@@ -1318,6 +1398,118 @@ class _InviteCoParentBottomSheetState extends State<InviteCoParentBottomSheet> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PetVideoPlayerDialog extends StatefulWidget {
+  final String videoUrl;
+  const _PetVideoPlayerDialog({required this.videoUrl});
+
+  @override
+  State<_PetVideoPlayerDialog> createState() => _PetVideoPlayerDialogState();
+}
+
+class _PetVideoPlayerDialogState extends State<_PetVideoPlayerDialog> {
+  late VideoPlayerController _controller;
+  bool _isInitialized = false;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
+      ..initialize().then((_) {
+        if (mounted) {
+          setState(() => _isInitialized = true);
+          _controller.play();
+          _controller.setLooping(true);
+        }
+      }).catchError((err) {
+        debugPrint('Pet gallery video player error: $err');
+        if (mounted) setState(() => _hasError = true);
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.black,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            if (_isInitialized)
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _controller.value.isPlaying ? _controller.pause() : _controller.play();
+                  });
+                },
+                child: AspectRatio(
+                  aspectRatio: _controller.value.aspectRatio > 0 ? _controller.value.aspectRatio : 16 / 9,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      VideoPlayer(_controller),
+                      if (!_controller.value.isPlaying)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: const BoxDecoration(
+                            color: Colors.black45,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.play_arrow, color: Colors.white, size: 48),
+                        ),
+                    ],
+                  ),
+                ),
+              )
+            else if (_hasError)
+              const Padding(
+                padding: EdgeInsets.all(40),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
+                    SizedBox(height: 12),
+                    Text(
+                      'Failed to load video.',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              )
+            else
+              const Padding(
+                padding: EdgeInsets.all(48),
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: CircleAvatar(
+                backgroundColor: Colors.black54,
+                radius: 18,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.close, color: Colors.white, size: 20),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

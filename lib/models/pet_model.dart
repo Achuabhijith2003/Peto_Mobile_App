@@ -61,29 +61,46 @@ class PetMedia {
   final String mediaId;
   final String mediaType;
   final String mediaUrl;
+  final String? thumbnailUrl;
   final String? caption;
   final bool isProfile;
   final bool isCover;
+
+  bool get isVideo =>
+      mediaType.toUpperCase() == 'VIDEO' ||
+      mediaUrl.toLowerCase().endsWith('.mp4') ||
+      mediaUrl.toLowerCase().endsWith('.mov') ||
+      mediaUrl.toLowerCase().endsWith('.mkv') ||
+      mediaUrl.toLowerCase().endsWith('.webm');
 
   PetMedia({
     required this.id,
     required this.mediaId,
     required this.mediaType,
     required this.mediaUrl,
+    this.thumbnailUrl,
     this.caption,
     required this.isProfile,
     required this.isCover,
   });
 
   factory PetMedia.fromJson(Map<String, dynamic> json) {
+    final rawUrl = (json['media_url'] ?? json['url'] ?? '').toString();
+    final rawType = (json['media_type'] ?? json['type'] ?? '').toString().toUpperCase();
+    final isVideo = rawType == 'VIDEO' ||
+        rawUrl.toLowerCase().endsWith('.mp4') ||
+        rawUrl.toLowerCase().endsWith('.mov') ||
+        rawUrl.toLowerCase().endsWith('.webm');
+
     return PetMedia(
       id: json['id']?.toString() ?? '',
-      mediaId: json['media_id']?.toString() ?? '',
-      mediaType: json['media_type']?.toString() ?? 'IMAGE',
-      mediaUrl: json['media_url']?.toString() ?? '',
+      mediaId: json['media_id']?.toString() ?? json['mediaId']?.toString() ?? '',
+      mediaType: isVideo ? 'VIDEO' : 'IMAGE',
+      mediaUrl: rawUrl,
+      thumbnailUrl: (json['thumbnail_url'] ?? json['thumbnailUrl'])?.toString(),
       caption: json['caption'] as String?,
-      isProfile: json['is_profile'] == true,
-      isCover: json['is_cover'] == true,
+      isProfile: json['is_profile'] == true || json['role'] == 'PROFILE',
+      isCover: json['is_cover'] == true || json['role'] == 'COVER',
     );
   }
 
@@ -93,6 +110,7 @@ class PetMedia {
       'media_id': mediaId,
       'media_type': mediaType,
       'media_url': mediaUrl,
+      'thumbnail_url': thumbnailUrl,
       'caption': caption,
       'is_profile': isProfile,
       'is_cover': isCover,

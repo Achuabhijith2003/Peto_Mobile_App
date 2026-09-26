@@ -8,7 +8,7 @@ import 'providers/reel_provider.dart';
 import 'providers/notification_provider.dart';
 import 'providers/system_status_provider.dart';
 import 'screens/errors/maintenance_screen.dart';
-import 'screens/main_shell.dart';
+import 'screens/splash_screen.dart';
 import 'services/notification_service.dart';
 
 void main() async {
@@ -55,7 +55,7 @@ class PetoUserApp extends StatelessWidget {
             }
             return child!;
           },
-          child: const MainShell(),
+          child: const SplashScreen(),
         ),
       ),
     );

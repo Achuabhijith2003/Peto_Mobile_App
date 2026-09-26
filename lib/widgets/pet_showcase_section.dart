@@ -88,6 +88,24 @@ class _PetShowcaseSectionState extends State<PetShowcaseSection> {
     }
   }
 
+  void _navigateToPetProfile(BuildContext context, Pet pet) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => PetProfileScreen(
+          petId: pet.id,
+          initialPet: pet,
+        ),
+      ),
+    ).then((_) {
+      if (mounted) {
+        _fetchPendingInvites();
+        widget.onRefresh?.call();
+      }
+    });
+  }
+
+  // ignore: unused_element
   void _showPetDetailsSheet(BuildContext context, Pet pet) {
     showModalBottomSheet(
       context: context,
@@ -399,7 +417,7 @@ class _PetShowcaseSectionState extends State<PetShowcaseSection> {
                   }
 
                   final pet = widget.pets[idx];
-                  return _PetCard(pet: pet, onTap: () => _showPetDetailsSheet(context, pet));
+                  return _PetCard(pet: pet, onTap: () => _navigateToPetProfile(context, pet));
                 },
               ),
             ),

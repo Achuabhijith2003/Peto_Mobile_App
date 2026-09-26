@@ -1223,17 +1223,27 @@ class ApiService {
   Future<bool> addPetMedia(
     String petId, {
     required String mediaId,
+    String? mediaUrl,
     String role = 'GALLERY',
     String? caption,
   }) async {
     try {
+      final body = <String, dynamic>{
+        'media_id': mediaId,
+        'mediaId': mediaId,
+        'role': role,
+      };
+      if (mediaUrl != null && mediaUrl.isNotEmpty) {
+        body['url'] = mediaUrl;
+        body['media_url'] = mediaUrl;
+      }
+      if (caption != null && caption.isNotEmpty) {
+        body['caption'] = caption;
+      }
+
       final response = await _dio.post(
         '/pets/$petId/media',
-        data: {
-          'media_id': mediaId,
-          'role': role,
-          'caption': ?caption,
-        },
+        data: body,
       );
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {

@@ -72,11 +72,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.pets, color: AppColors.primaryContainer, size: 26),
-            SizedBox(width: 8),
-            Text(
+            Image.asset(
+              'assets/images/peto_logo.png',
+              width: 28,
+              height: 28,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => const Icon(Icons.pets, color: AppColors.primaryContainer, size: 26),
+            ),
+            const SizedBox(width: 8),
+            const Text(
               'Peto',
               style: TextStyle(
                 fontFamily: 'Quicksand',
