@@ -182,6 +182,116 @@ class ApiService {
     return await _dio.patch('/users/me', data: data);
   }
 
+  Future<Map<String, dynamic>> uploadAvatar(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) {
+        return {'success': false, 'message': 'Selected file does not exist.'};
+      }
+
+      final fileName = filePath.split('/').last.split('\\').last;
+      final mediaType = _resolveMediaType(fileName, isVideo: false);
+
+      final multipartFile = await MultipartFile.fromFile(
+        filePath,
+        filename: fileName,
+        contentType: mediaType,
+      );
+
+      final formData = FormData();
+      formData.files.add(MapEntry('avatar', multipartFile));
+      formData.files.add(MapEntry('image', multipartFile));
+      formData.files.add(MapEntry('file', multipartFile));
+
+      final response = await _dio.patch(
+        '/users/avatar',
+        data: formData,
+        options: Options(
+          sendTimeout: const Duration(minutes: 2),
+          receiveTimeout: const Duration(minutes: 2),
+        ),
+      );
+
+      if ((response.statusCode == 200 || response.statusCode == 201) && response.data != null) {
+        final avatarUrl = response.data['avatar_url'] ??
+            response.data['avatarUrl'] ??
+            response.data['data']?['avatar_url'] ??
+            response.data['data']?['avatarUrl'];
+        if (avatarUrl != null) {
+          return {'success': true, 'avatar_url': avatarUrl.toString()};
+        }
+      }
+
+      final fallback = await uploadMediaFile(filePath, fileName: fileName);
+      if (fallback.success && fallback.mediaUrl != null) {
+        return {'success': true, 'avatar_url': fallback.mediaUrl};
+      }
+      return {'success': false, 'message': response.data?['message'] ?? 'Failed to upload avatar.'};
+    } catch (e) {
+      debugPrint('Upload avatar error: $e. Trying media fallback...');
+      final fallback = await uploadMediaFile(filePath);
+      if (fallback.success && fallback.mediaUrl != null) {
+        return {'success': true, 'avatar_url': fallback.mediaUrl};
+      }
+      return {'success': false, 'message': fallback.errorMessage ?? 'Upload failed: $e'};
+    }
+  }
+
+  Future<Map<String, dynamic>> uploadCover(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (!await file.exists()) {
+        return {'success': false, 'message': 'Selected file does not exist.'};
+      }
+
+      final fileName = filePath.split('/').last.split('\\').last;
+      final mediaType = _resolveMediaType(fileName, isVideo: false);
+
+      final multipartFile = await MultipartFile.fromFile(
+        filePath,
+        filename: fileName,
+        contentType: mediaType,
+      );
+
+      final formData = FormData();
+      formData.files.add(MapEntry('cover', multipartFile));
+      formData.files.add(MapEntry('image', multipartFile));
+      formData.files.add(MapEntry('file', multipartFile));
+
+      final response = await _dio.patch(
+        '/users/cover',
+        data: formData,
+        options: Options(
+          sendTimeout: const Duration(minutes: 2),
+          receiveTimeout: const Duration(minutes: 2),
+        ),
+      );
+
+      if ((response.statusCode == 200 || response.statusCode == 201) && response.data != null) {
+        final coverUrl = response.data['cover_url'] ??
+            response.data['coverUrl'] ??
+            response.data['data']?['cover_url'] ??
+            response.data['data']?['coverUrl'];
+        if (coverUrl != null) {
+          return {'success': true, 'cover_url': coverUrl.toString()};
+        }
+      }
+
+      final fallback = await uploadMediaFile(filePath, fileName: fileName);
+      if (fallback.success && fallback.mediaUrl != null) {
+        return {'success': true, 'cover_url': fallback.mediaUrl};
+      }
+      return {'success': false, 'message': response.data?['message'] ?? 'Failed to upload cover.'};
+    } catch (e) {
+      debugPrint('Upload cover error: $e. Trying media fallback...');
+      final fallback = await uploadMediaFile(filePath);
+      if (fallback.success && fallback.mediaUrl != null) {
+        return {'success': true, 'cover_url': fallback.mediaUrl};
+      }
+      return {'success': false, 'message': fallback.errorMessage ?? 'Upload failed: $e'};
+    }
+  }
+
   Future<Response> searchUsers(String query) async {
     return await _dio.get('/users/search', queryParameters: {'q': query});
   }

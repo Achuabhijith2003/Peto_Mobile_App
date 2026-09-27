@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../policy/policy_screen.dart';
-import 'verification_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -15,32 +13,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final ApiService _apiService = ApiService();
-  bool _isLoadingStatus = false;
-  Map<String, dynamic>? _verificationApp;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadVerificationStatus();
-  }
-
-  Future<void> _loadVerificationStatus() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    if (!authProvider.isAuthenticated) return;
-
-    setState(() => _isLoadingStatus = true);
-    final res = await _apiService.fetchVerificationStatus();
-    if (mounted) {
-      setState(() {
-        _isLoadingStatus = false;
-        if (res['has_application'] == true && res['application'] != null) {
-          _verificationApp = Map<String, dynamic>.from(res['application']);
-        }
-      });
-    }
-  }
-
   Future<void> _launchAdvertiserPortal() async {
     const urlString = 'https://peto-web.onrender.com/advertiser';
     final uri = Uri.parse(urlString);
@@ -302,11 +274,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
-    final user = authProvider.user;
-
-    final isUserVerified = user?.isVerified == true || _verificationApp?['status'] == 'APPROVED';
-    final isPending = _verificationApp?['status'] == 'SUBMITTED' || _verificationApp?['status'] == 'UNDER_REVIEW';
-
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -338,52 +305,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildSettingsTile(
               icon: Icons.verified_outlined,
               iconColor: const Color(0xFF2563EB),
-              title: 'Get Blue Tick Verification',
-              subtitle: isUserVerified
-                  ? 'Your Peto account is officially verified'
-                  : isPending
-                      ? 'Application under compliance review'
-                      : 'Apply for authentic badge for creators & professionals',
-              trailing: _isLoadingStatus
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: isUserVerified
-                            ? const Color(0xFFDBEAFE)
-                            : isPending
-                                ? const Color(0xFFFEF3C7)
-                                : const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        isUserVerified
-                            ? 'VERIFIED'
-                            : isPending
-                                ? 'REVIEW'
-                                : 'APPLY',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: isUserVerified
-                              ? const Color(0xFF1D4ED8)
-                              : isPending
-                                  ? const Color(0xFFB45309)
-                                  : const Color(0xFF475569),
-                        ),
-                      ),
-                    ),
-              onTap: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const VerificationScreen()),
-                );
-                _loadVerificationStatus();
-              },
+              title: 'Verification',
+              subtitle: 'Apply for personal or business verification on the web',
+              trailing: const Icon(
+                Icons.open_in_new_rounded,
+                size: 18,
+                color: Color(0xFF94A3B8),
+              ),
+              onTap: _launchAdvertiserPortal,
             ),
             const SizedBox(height: 18),
           ],

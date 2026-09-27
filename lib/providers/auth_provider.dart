@@ -297,8 +297,24 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> updateUserProfile(Map<String, dynamic> data) async {
     try {
+      final avatarUrl = data['avatar_url']?.toString() ?? data['avatarUrl']?.toString();
+      final coverUrl = data['cover_url']?.toString() ?? data['coverUrl']?.toString();
+      final fullName = data['full_name']?.toString() ?? data['fullName']?.toString();
+      final username = data['username']?.toString();
+
+      if (_user != null) {
+        _user = _user!.copyWith(
+          avatarUrl: (avatarUrl != null && avatarUrl.isNotEmpty) ? avatarUrl : _user!.avatarUrl,
+          coverUrl: (coverUrl != null && coverUrl.isNotEmpty) ? coverUrl : _user!.coverUrl,
+          fullName: (fullName != null && fullName.isNotEmpty) ? fullName : _user!.fullName,
+          username: (username != null && username.isNotEmpty) ? username : _user!.username,
+        );
+        await _storageService.saveUserData(jsonEncode(_user!.toJson()));
+        notifyListeners();
+      }
+
       final response = await _apiService.updateProfile(data);
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         await refreshUser();
         return true;
       }
@@ -306,6 +322,24 @@ class AuthProvider extends ChangeNotifier {
       debugPrint('Update profile error: $e');
     }
     return false;
+  }
+
+  Future<void> updateAvatarUrl(String url) async {
+    if (_user != null) {
+      _user = _user!.copyWith(avatarUrl: url);
+      await _storageService.saveUserData(jsonEncode(_user!.toJson()));
+      notifyListeners();
+    }
+    await refreshUser();
+  }
+
+  Future<void> updateCoverUrl(String url) async {
+    if (_user != null) {
+      _user = _user!.copyWith(coverUrl: url);
+      await _storageService.saveUserData(jsonEncode(_user!.toJson()));
+      notifyListeners();
+    }
+    await refreshUser();
   }
 
   Future<Map<String, dynamic>> forgotPassword(String email, {String? redirectTo}) async {

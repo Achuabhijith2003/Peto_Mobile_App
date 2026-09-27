@@ -90,6 +90,16 @@ class User {
   String? get phone => profile?.phone;
   String? get dateOfBirth => profile?.dateOfBirth;
 
+  static String? _firstNonEmpty(List<dynamic> items) {
+    for (final item in items) {
+      if (item != null) {
+        final str = item.toString().trim();
+        if (str.isNotEmpty) return str;
+      }
+    }
+    return null;
+  }
+
   factory User.fromJson(Map<String, dynamic> json) {
     final profileData = json['profile'] is Map<String, dynamic>
         ? json['profile'] as Map<String, dynamic>
@@ -105,8 +115,19 @@ class User {
           profileData['fullName']?.toString() ??
           json['full_name']?.toString() ??
           json['name']?.toString(),
-      avatarUrl: json['avatar_url']?.toString() ?? profileData['avatar_url']?.toString(),
-      coverUrl: json['cover_url']?.toString() ?? profileData['cover_url']?.toString() ?? profileData['banner_url']?.toString(),
+      avatarUrl: _firstNonEmpty([
+        profileData['avatar_url'],
+        profileData['avatarUrl'],
+        json['avatar_url'],
+        json['avatarUrl'],
+      ]),
+      coverUrl: _firstNonEmpty([
+        profileData['cover_url'],
+        profileData['coverUrl'],
+        profileData['banner_url'],
+        json['cover_url'],
+        json['coverUrl'],
+      ]),
       profile: resolvedProfile,
       postsCount: json['posts_count'] is int
           ? json['posts_count']

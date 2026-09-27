@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
-import '../../services/media_upload_helper.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
@@ -43,42 +43,242 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool? _isUsernameAvailable;
 
   void _pickAvatar() async {
-    setState(() => _isUploadingAvatar = true);
-    final res = await MediaUploadHelper.showPickerAndUpload(
-      context,
-      allowVideo: false,
-      title: 'Upload Profile Avatar',
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Text(
+                'Change Profile Photo',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.onSurface,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryContainer.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.photo_library_outlined, color: AppColors.primary),
+                ),
+                title: const Text('Choose Photo from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () => Navigator.pop(ctx, 'gallery'),
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.secondaryContainer.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.camera_alt_outlined, color: AppColors.secondary),
+                ),
+                title: const Text('Take Photo with Camera', style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () => Navigator.pop(ctx, 'camera'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
-    if (mounted) {
-      setState(() {
-        _isUploadingAvatar = false;
-        if (res != null) {
-          _localAvatarPath = res.localPath;
-          if (res.uploadedUrl != null) {
-            _avatarUrlController.text = res.uploadedUrl!;
-          }
+
+    if (choice == null) return;
+
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: choice == 'camera' ? ImageSource.camera : ImageSource.gallery,
+      imageQuality: 85,
+    );
+
+    if (picked == null) return;
+
+    setState(() {
+      _localAvatarPath = picked.path;
+      _isUploadingAvatar = true;
+    });
+
+    try {
+      final res = await _apiService.uploadAvatar(picked.path);
+      if (!mounted) return;
+      if (res['success'] == true && res['avatar_url'] != null) {
+        final url = res['avatar_url'].toString();
+        setState(() {
+          _avatarUrlController.text = url;
+        });
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        await authProvider.updateAvatarUrl(url);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Profile photo updated successfully!'),
+              backgroundColor: AppColors.primaryContainer,
+              duration: Duration(seconds: 2),
+            ),
+          );
         }
-      });
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res['message']?.toString() ?? 'Failed to upload profile photo.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to upload avatar: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingAvatar = false);
+      }
     }
   }
 
   void _pickCover() async {
-    setState(() => _isUploadingCover = true);
-    final res = await MediaUploadHelper.showPickerAndUpload(
-      context,
-      allowVideo: false,
-      title: 'Upload Cover Photo',
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Text(
+                'Change Cover Photo',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.onSurface,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryContainer.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.photo_library_outlined, color: AppColors.primary),
+                ),
+                title: const Text('Choose Photo from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () => Navigator.pop(ctx, 'gallery'),
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.secondaryContainer.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.camera_alt_outlined, color: AppColors.secondary),
+                ),
+                title: const Text('Take Photo with Camera', style: TextStyle(fontWeight: FontWeight.w600)),
+                onTap: () => Navigator.pop(ctx, 'camera'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
-    if (mounted) {
-      setState(() {
-        _isUploadingCover = false;
-        if (res != null) {
-          _localCoverPath = res.localPath;
-          if (res.uploadedUrl != null) {
-            _coverUrlController.text = res.uploadedUrl!;
-          }
+
+    if (choice == null) return;
+
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: choice == 'camera' ? ImageSource.camera : ImageSource.gallery,
+      imageQuality: 85,
+    );
+
+    if (picked == null) return;
+
+    setState(() {
+      _localCoverPath = picked.path;
+      _isUploadingCover = true;
+    });
+
+    try {
+      final res = await _apiService.uploadCover(picked.path);
+      if (!mounted) return;
+      if (res['success'] == true && res['cover_url'] != null) {
+        final url = res['cover_url'].toString();
+        setState(() {
+          _coverUrlController.text = url;
+        });
+        final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        await authProvider.updateCoverUrl(url);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Cover photo updated successfully!'),
+              backgroundColor: AppColors.primaryContainer,
+              duration: Duration(seconds: 2),
+            ),
+          );
         }
-      });
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res['message']?.toString() ?? 'Failed to upload cover photo.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to upload cover: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingCover = false);
+      }
     }
   }
 
