@@ -156,77 +156,79 @@ class _HomeScreenState extends State<HomeScreen> {
           await p1;
         },
         color: AppColors.primary,
-        child: SingleChildScrollView(
+        child: CustomScrollView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Create Post Quick Card
-              Card(
-                child: InkWell(
-                  onTap: () {
-                    if (authProvider.isAuthenticated) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const CreatePostScreen(),
-                        ),
-                      );
-                    } else {
-                      AuthPromptBottomSheet.show(
-                        context,
-                        actionTitle: 'Create Post',
-                      );
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(16),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 18,
-                          backgroundColor: AppColors.primaryFixed,
-                          child: const Icon(
-                            Icons.person,
-                            color: AppColors.primary,
-                            size: 20,
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              sliver: SliverToBoxAdapter(
+                child: Card(
+                  child: InkWell(
+                    onTap: () {
+                      if (authProvider.isAuthenticated) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const CreatePostScreen(),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Text(
-                            "Share a moment of your pet...",
-                            style: TextStyle(
-                              color: AppColors.onSurfaceVariant,
-                              fontSize: 14,
+                        );
+                      } else {
+                        AuthPromptBottomSheet.show(
+                          context,
+                          actionTitle: 'Create Post',
+                        );
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 18,
+                            backgroundColor: AppColors.primaryFixed,
+                            child: const Icon(
+                              Icons.person,
+                              color: AppColors.primary,
+                              size: 20,
                             ),
                           ),
-                        ),
-                        const Icon(
-                          Icons.image_outlined,
-                          color: AppColors.primaryContainer,
-                        ),
-                      ],
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              "Share a moment of your pet...",
+                              style: TextStyle(
+                                color: AppColors.onSurfaceVariant,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.image_outlined,
+                            color: AppColors.primaryContainer,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-
-              const SizedBox(height: 16),
-
-              // Feed list
-              if (postProvider.isLoading && postProvider.posts.isEmpty) ...[
-                const Center(
+            ),
+            if (postProvider.isLoading && postProvider.posts.isEmpty)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
                   child: Padding(
                     padding: EdgeInsets.all(40),
                     child: CircularProgressIndicator(),
                   ),
                 ),
-              ] else if (postProvider.posts.isEmpty) ...[
-                const Center(
+              )
+            else if (postProvider.posts.isEmpty)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
                   child: Padding(
                     padding: EdgeInsets.all(40),
                     child: Text(
@@ -235,61 +237,64 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-              ] else ...[
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: postProvider.posts.length,
-                  itemBuilder: (context, index) {
-                    final post = postProvider.posts[index];
-                    final shouldShowAd = index > 0 && index % 4 == 3 && _feedAds.isNotEmpty;
-                    final adToShow = shouldShowAd
-                        ? _feedAds[(index ~/ 4) % _feedAds.length]
-                        : null;
+              )
+            else ...[
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final post = postProvider.posts[index];
+                      final shouldShowAd = index > 0 && index % 4 == 3 && _feedAds.isNotEmpty;
+                      final adToShow = shouldShowAd
+                          ? _feedAds[(index ~/ 4) % _feedAds.length]
+                          : null;
 
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        PostCard(
-                          post: post,
-                          onLike: () {
-                            if (authProvider.isAuthenticated) {
-                              postProvider.toggleLike(post.id);
-                            } else {
-                              AuthPromptBottomSheet.show(
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          PostCard(
+                            post: post,
+                            onLike: () {
+                              if (authProvider.isAuthenticated) {
+                                postProvider.toggleLike(post.id);
+                              } else {
+                                AuthPromptBottomSheet.show(
+                                  context,
+                                  actionTitle: 'Like Post',
+                                );
+                              }
+                            },
+                            onBookmark: () {
+                              if (authProvider.isAuthenticated) {
+                                postProvider.toggleBookmark(post.id);
+                              } else {
+                                AuthPromptBottomSheet.show(
+                                  context,
+                                  actionTitle: 'Save Post',
+                                );
+                              }
+                            },
+                            onComment: () {
+                              CommentsBottomSheet.show(
                                 context,
-                                actionTitle: 'Like Post',
+                                postId: post.id,
+                                postAuthorUsername: post.author.username,
                               );
-                            }
-                          },
-                          onBookmark: () {
-                            if (authProvider.isAuthenticated) {
-                              postProvider.toggleBookmark(post.id);
-                            } else {
-                              AuthPromptBottomSheet.show(
-                                context,
-                                actionTitle: 'Save Post',
-                              );
-                            }
-                          },
-                          onComment: () {
-                            CommentsBottomSheet.show(
-                              context,
-                              postId: post.id,
-                              postAuthorUsername: post.author.username,
-                            );
-                          },
-                        ),
-                        if (adToShow != null)
-                          SponsoredPostCard(ad: adToShow),
-                      ],
-                    );
-                  },
+                            },
+                          ),
+                          if (adToShow != null)
+                            SponsoredPostCard(ad: adToShow),
+                        ],
+                      );
+                    },
+                    childCount: postProvider.posts.length,
+                  ),
                 ),
-
-                // Bottom loading indicator when fetching next 7 posts
-                if (postProvider.isLoadingMore)
-                  const Padding(
+              ),
+              if (postProvider.isLoadingMore)
+                const SliverToBoxAdapter(
+                  child: Padding(
                     padding: EdgeInsets.symmetric(vertical: 20),
                     child: Center(
                       child: Row(
@@ -316,64 +321,67 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
-
-                // Instagram-style "You're all caught up" card
-                if (!postProvider.hasMore && postProvider.posts.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.symmetric(vertical: 20),
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: AppColors.outlineVariant.withValues(alpha: 0.5),
+                ),
+              if (!postProvider.hasMore && postProvider.posts.isNotEmpty)
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  sliver: SliverToBoxAdapter(
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(vertical: 20),
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: AppColors.outlineVariant.withValues(alpha: 0.5),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.03),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade50,
-                            shape: BoxShape.circle,
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.check_circle_outline,
+                              color: Colors.green,
+                              size: 28,
+                            ),
                           ),
-                          child: const Icon(
-                            Icons.check_circle_outline,
-                            color: Colors.green,
-                            size: 28,
+                          const SizedBox(height: 10),
+                          const Text(
+                            "You're all caught up",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: AppColors.onSurface,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 10),
-                        const Text(
-                          "You're all caught up",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                            color: AppColors.onSurface,
+                          const SizedBox(height: 4),
+                          const Text(
+                            "You've seen all the recent posts from everyone in the Peto community.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.onSurfaceVariant,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          "You've seen all the recent posts from everyone in the Peto community.",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-              ],
+                ),
             ],
-          ),
+          ],
         ),
       ),
       floatingActionButton: FloatingActionButton(

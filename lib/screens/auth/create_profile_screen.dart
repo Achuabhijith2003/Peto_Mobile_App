@@ -9,6 +9,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_field.dart';
 import 'login_screen.dart';
+import '../main_shell.dart';
 
 class CreateProfileScreen extends StatefulWidget {
   final String? prefilledUsername;
@@ -118,17 +119,11 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     if (mounted) {
       setState(() => _isLoading = false);
       if (success) {
-        // Move to login screen as requested
-        await authProvider.logout();
+        await authProvider.refreshUser();
         if (mounted) {
           Navigator.pushAndRemoveUntil(
             context,
-            MaterialPageRoute(
-              builder: (_) => LoginScreen(
-                initialEmail: widget.prefilledEmail,
-                successMessage: 'Profile completed successfully! Please sign in to continue.',
-              ),
-            ),
+            MaterialPageRoute(builder: (_) => const MainShell()),
             (route) => false,
           );
         }
@@ -145,18 +140,28 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
 
   void _skipForNow() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    await authProvider.logout();
-    if (mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (_) => LoginScreen(
-            initialEmail: widget.prefilledEmail,
-            successMessage: 'Account created! Please sign in to continue.',
+    if (authProvider.isAuthenticated) {
+      await authProvider.refreshUser();
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const MainShell()),
+          (route) => false,
+        );
+      }
+    } else {
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LoginScreen(
+              initialEmail: widget.prefilledEmail,
+              successMessage: 'Account created! Please sign in to continue.',
+            ),
           ),
-        ),
-        (route) => false,
-      );
+          (route) => false,
+        );
+      }
     }
   }
 

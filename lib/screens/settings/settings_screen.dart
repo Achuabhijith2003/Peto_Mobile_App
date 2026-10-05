@@ -3,7 +3,11 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../providers/auth_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../services/api_service.dart';
 import '../policy/policy_screen.dart';
+import '../business/business_profile_screen.dart';
+import 'verification_screen.dart';
+import '../../widgets/identity_switcher_bottom_sheet.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,6 +17,24 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  final ApiService _apiService = ApiService();
+  bool _isMarketplaceEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFeatures();
+  }
+
+  Future<void> _loadFeatures() async {
+    final features = await _apiService.fetchAdFeatures();
+    if (mounted) {
+      setState(() {
+        _isMarketplaceEnabled = features['petoAdsMarketplace'] == true;
+      });
+    }
+  }
+
   Future<void> _launchAdvertiserPortal() async {
     const urlString = 'https://peto-web.onrender.com/advertiser';
     final uri = Uri.parse(urlString);
@@ -306,13 +328,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               icon: Icons.verified_outlined,
               iconColor: const Color(0xFF2563EB),
               title: 'Verification',
-              subtitle: 'Apply for personal or business verification on the web',
+              subtitle: 'Apply for personal identity verification (Blue Tick)',
               trailing: const Icon(
-                Icons.open_in_new_rounded,
-                size: 18,
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
                 color: Color(0xFF94A3B8),
               ),
-              onTap: _launchAdvertiserPortal,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const VerificationScreen()),
+                );
+              },
             ),
             const SizedBox(height: 18),
           ],
@@ -335,21 +362,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 18),
 
-          // ADVERTISER PORTAL SECTION
+          // BUSINESS & PROMOTION SECTION
           _buildSectionHeader('BUSINESS & PROMOTION'),
-          _buildSettingsTile(
-            icon: Icons.campaign_outlined,
-            iconColor: const Color(0xFF8B5CF6),
-            title: 'Advertiser Portal',
-            subtitle: 'Launch targeted ads and sponsor reels (opens in browser)',
-            trailing: const Icon(
-              Icons.open_in_new_rounded,
-              size: 18,
-              color: Color(0xFF94A3B8),
+          if (authProvider.managedBusinesses.isNotEmpty) ...[
+            _buildSettingsTile(
+              icon: Icons.storefront_rounded,
+              iconColor: const Color(0xFFD97706),
+              title: 'My Business Profiles (${authProvider.managedBusinesses.length})',
+              subtitle: 'Switch identity or manage your business profile page',
+              trailing: const Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
+                color: Color(0xFF94A3B8),
+              ),
+              onTap: () {
+                if (authProvider.managedBusinesses.length == 1) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BusinessProfileScreen(
+                        businessId: authProvider.managedBusinesses.first.id,
+                      ),
+                    ),
+                  );
+                } else {
+                  IdentitySwitcherBottomSheet.show(context);
+                }
+              },
             ),
-            onTap: _launchAdvertiserPortal,
-          ),
-          const SizedBox(height: 18),
+            const SizedBox(height: 10),
+          ],
+          if (_isMarketplaceEnabled) ...[
+            _buildSettingsTile(
+              icon: Icons.campaign_outlined,
+              iconColor: const Color(0xFF8B5CF6),
+              title: 'Advertiser Portal',
+              subtitle: 'Launch targeted ads and sponsor reels (opens in browser)',
+              trailing: const Icon(
+                Icons.open_in_new_rounded,
+                size: 18,
+                color: Color(0xFF94A3B8),
+              ),
+              onTap: _launchAdvertiserPortal,
+            ),
+            const SizedBox(height: 18),
+          ],
 
           // SIGN OUT / APP INFO
           if (authProvider.isAuthenticated) ...[
@@ -358,7 +415,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               icon: Icons.logout_rounded,
               iconColor: const Color(0xFFEF4444),
               title: 'Log Out',
-              subtitle: 'Sign out of @${user?.username ?? "user"} on this device',
+              subtitle: 'Sign out of @${authProvider.user?.username ?? "user"} on this device',
               onTap: () => authProvider.logout(),
             ),
           ],

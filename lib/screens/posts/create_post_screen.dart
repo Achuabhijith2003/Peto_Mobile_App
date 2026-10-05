@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/post_provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../widgets/verification_badge.dart';
+import '../../widgets/identity_switcher_bottom_sheet.dart';
 import '../../services/media_upload_helper.dart';
 import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
@@ -474,6 +477,102 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Builder(
+              builder: (context) {
+                final authProvider = Provider.of<AuthProvider>(context);
+                final activeIdentity = authProvider.activeIdentity;
+                final hasBusinesses = authProvider.managedBusinesses.isNotEmpty;
+
+                if (!activeIdentity.isBusiness && !hasBusinesses) return const SizedBox.shrink();
+
+                final isBiz = activeIdentity.isBusiness;
+
+                return InkWell(
+                  onTap: hasBusinesses ? () => IdentitySwitcherBottomSheet.show(context) : null,
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isBiz ? Colors.amber.shade50 : AppColors.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isBiz ? Colors.amber.shade200 : AppColors.outlineVariant.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 14,
+                          backgroundColor: isBiz ? Colors.amber.shade200 : AppColors.primaryFixed,
+                          backgroundImage: activeIdentity.avatarUrl != null && activeIdentity.avatarUrl!.isNotEmpty
+                              ? CachedNetworkImageProvider(activeIdentity.avatarUrl!)
+                              : null,
+                          child: activeIdentity.avatarUrl == null || activeIdentity.avatarUrl!.isEmpty
+                              ? Text(
+                                  activeIdentity.name.isNotEmpty ? activeIdentity.name[0].toUpperCase() : (isBiz ? 'B' : 'U'),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: isBiz ? Colors.amber.shade900 : AppColors.primary,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  'Posting as: ${activeIdentity.name}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                    color: isBiz ? Colors.amber.shade900 : AppColors.onSurface,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (isBiz) ...[
+                                const SizedBox(width: 4),
+                                const VerificationBadge(badgeType: 'BUSINESS_VERIFIED', size: 16),
+                              ],
+                            ],
+                          ),
+                        ),
+                        if (hasBusinesses) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isBiz ? Colors.amber.shade200 : AppColors.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.swap_horiz_rounded, size: 14, color: isBiz ? Colors.amber.shade900 : AppColors.onSurfaceVariant),
+                                const SizedBox(width: 2),
+                                Text(
+                                  'Switch',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: isBiz ? Colors.amber.shade900 : AppColors.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
             TextField(
               controller: _contentController,
               maxLines: 5,

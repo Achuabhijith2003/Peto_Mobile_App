@@ -58,6 +58,92 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  List<BusinessModel> _managedBusinesses = [];
+  ActiveIdentityModel? _activeIdentity;
+
+  List<BusinessModel> get managedBusinesses => _managedBusinesses;
+  ActiveIdentityModel get activeIdentity => _activeIdentity ?? _getPersonalIdentity();
+  bool get isActingAsBusiness => activeIdentity.isBusiness;
+
+  ActiveIdentityModel _getPersonalIdentity() {
+    return ActiveIdentityModel(
+      type: 'PERSON',
+      id: _user?.id ?? '',
+      name: _user?.displayName ?? 'Personal Profile',
+      avatarUrl: _user?.avatarUrl,
+      isVerified: _user?.isVerified ?? false,
+    );
+  }
+
+  Future<void> fetchManagedBusinesses() async {
+    if (!isAuthenticated) {
+      _managedBusinesses = [];
+      _activeIdentity = _getPersonalIdentity();
+      notifyListeners();
+      return;
+    }
+    try {
+      final list = await _apiService.getMyBusinesses();
+      _managedBusinesses = list.map((b) => BusinessModel.fromJson(Map<String, dynamic>.from(b))).toList();
+
+      final savedType = await _storageService.getString('active_acting_identity_type');
+      final savedId = await _storageService.getString('active_acting_identity_id');
+
+      if (savedType == 'BUSINESS' && savedId != null) {
+        final match = _managedBusinesses.firstWhere(
+          (b) => b.id == savedId,
+          orElse: () => BusinessModel(id: '', name: '', legalName: '', countryCode: ''),
+        );
+        if (match.id.isNotEmpty) {
+          _activeIdentity = ActiveIdentityModel(
+            type: 'BUSINESS',
+            id: match.id,
+            name: match.name,
+            avatarUrl: match.avatarUrl,
+            isVerified: match.isVerified,
+            role: match.role,
+            business: match,
+          );
+          notifyListeners();
+          return;
+        }
+      }
+      _activeIdentity = _getPersonalIdentity();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error fetching managed businesses: $e');
+    }
+  }
+
+  Future<void> switchIdentity(String type, {String? businessId}) async {
+    if (type == 'BUSINESS' && businessId != null) {
+      final match = _managedBusinesses.firstWhere(
+        (b) => b.id == businessId,
+        orElse: () => BusinessModel(id: '', name: '', legalName: '', countryCode: ''),
+      );
+      if (match.id.isNotEmpty) {
+        _activeIdentity = ActiveIdentityModel(
+          type: 'BUSINESS',
+          id: match.id,
+          name: match.name,
+          avatarUrl: match.avatarUrl,
+          isVerified: match.isVerified,
+          role: match.role,
+          business: match,
+        );
+        await _storageService.setString('active_acting_identity_type', 'BUSINESS');
+        await _storageService.setString('active_acting_identity_id', match.id);
+        notifyListeners();
+        return;
+      }
+    }
+
+    _activeIdentity = _getPersonalIdentity();
+    await _storageService.setString('active_acting_identity_type', 'PERSON');
+    await _storageService.remove('active_acting_identity_id');
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _linkSubscription?.cancel();
@@ -77,10 +163,13 @@ class AuthProvider extends ChangeNotifier {
           _user = User.fromJson(userData);
           await _storageService.saveUserData(jsonEncode(_user!.toJson()));
           PushNotificationService().syncTokenWithBackend();
+          await fetchManagedBusinesses();
         }
       }
     } catch (e) {
       _user = null;
+      _managedBusinesses = [];
+      _activeIdentity = null;
       await _storageService.clearAuthData();
     } finally {
       _isLoading = false;
@@ -109,6 +198,7 @@ class AuthProvider extends ChangeNotifier {
           _user = User.fromJson(userData);
           await _storageService.saveUserData(jsonEncode(_user!.toJson()));
           PushNotificationService().syncTokenWithBackend();
+          await fetchManagedBusinesses();
           _isLoading = false;
           notifyListeners();
           return true;
@@ -156,6 +246,7 @@ class AuthProvider extends ChangeNotifier {
       }
 
       PushNotificationService().syncTokenWithBackend();
+      await fetchManagedBusinesses();
       _isLoading = false;
       notifyListeners();
       return true;
@@ -288,6 +379,7 @@ class AuthProvider extends ChangeNotifier {
 
         _user = User.fromJson(userData);
         await _storageService.saveUserData(jsonEncode(_user!.toJson()));
+        await fetchManagedBusinesses();
         notifyListeners();
       }
     } catch (e) {

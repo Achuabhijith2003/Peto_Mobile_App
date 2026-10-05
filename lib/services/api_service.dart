@@ -34,6 +34,25 @@ class ApiService {
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }
+          final actingType = await _storageService.getString('active_acting_identity_type');
+          final actingId = await _storageService.getString('active_acting_identity_id');
+          if (actingType == 'BUSINESS' && actingId != null && actingId.isNotEmpty) {
+            options.headers['x-acting-identity-type'] = 'BUSINESS';
+            options.headers['x-acting-identity-id'] = actingId;
+          }
+
+          // Auto-detect dynamic timezone and locale country for localized ads & feed
+          try {
+            options.headers['x-user-timezone'] = DateTime.now().timeZoneName;
+            final locale = Platform.localeName;
+            if (locale.contains('_')) {
+              final countryPart = locale.split('_').last;
+              if (countryPart.length == 2) {
+                options.headers['x-user-country'] = countryPart.toUpperCase();
+              }
+            }
+          } catch (_) {}
+
           if (options.data is FormData) {
             // Remove Content-Type header so Dio calculates boundary automatically
             options.headers.remove('Content-Type');
@@ -771,6 +790,21 @@ class ApiService {
     return null;
   }
 
+  /// Fetch public server-driven feature flags
+  Future<Map<String, dynamic>> fetchAdFeatures() async {
+    try {
+      final response = await _dio.get('/ads/features');
+      if (response.statusCode == 200 && response.data != null && response.data['features'] != null) {
+        return Map<String, dynamic>.from(response.data['features']);
+      }
+    } catch (_) {}
+    return {
+      'petoAdsMarketplace': false,
+      'googleAdsWeb': true,
+      'googleAdsMobile': true,
+    };
+  }
+
   /// Track external ad network telemetry event
   Future<void> trackExternalAdEvent({
     required String eventType,
@@ -1385,6 +1419,98 @@ class ApiService {
       }
     } catch (e) {
       debugPrint('Error getting pet posts: $e');
+    }
+    return [];
+  }
+
+  // ==========================================
+  // BUSINESS SOCIAL & IDENTITY API
+  // ==========================================
+
+  Future<List<dynamic>> getMyBusinesses() async {
+    try {
+      final response = await _dio.get('/businesses/me');
+      if (response.statusCode == 200 && response.data != null) {
+        final List<dynamic>? list = response.data['businesses'];
+        return list ?? [];
+      }
+    } catch (e) {
+      debugPrint('Error getting my businesses: $e');
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>?> getBusinessById(String businessId) async {
+    try {
+      final response = await _dio.get('/businesses/$businessId');
+      if (response.statusCode == 200 && response.data != null) {
+        return response.data['business'] as Map<String, dynamic>?;
+      }
+    } catch (e) {
+      debugPrint('Error getting business $businessId: $e');
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> updateBusinessProfile(String businessId, Map<String, dynamic> data) async {
+    try {
+      final response = await _dio.patch('/businesses/$businessId', data: data);
+      if (response.statusCode == 200 && response.data != null) {
+        return response.data['business'] as Map<String, dynamic>?;
+      }
+    } catch (e) {
+      debugPrint('Error updating business $businessId: $e');
+      rethrow;
+    }
+    return null;
+  }
+
+  Future<String?> uploadBusinessAvatar(String businessId, File file) async {
+    try {
+      final fileName = file.path.split('/').last.split('\\').last;
+      final formData = FormData.fromMap({
+        'avatar': await MultipartFile.fromFile(file.path, filename: fileName),
+      });
+      final response = await _dio.post('/businesses/$businessId/avatar', data: formData);
+      if (response.statusCode == 200 && response.data != null) {
+        return response.data['avatar_url'] as String?;
+      }
+    } catch (e) {
+      debugPrint('Error uploading business avatar: $e');
+      rethrow;
+    }
+    return null;
+  }
+
+  Future<String?> uploadBusinessCover(String businessId, File file) async {
+    try {
+      final fileName = file.path.split('/').last.split('\\').last;
+      final formData = FormData.fromMap({
+        'cover': await MultipartFile.fromFile(file.path, filename: fileName),
+      });
+      final response = await _dio.post('/businesses/$businessId/cover', data: formData);
+      if (response.statusCode == 200 && response.data != null) {
+        return response.data['cover_url'] as String?;
+      }
+    } catch (e) {
+      debugPrint('Error uploading business cover: $e');
+      rethrow;
+    }
+    return null;
+  }
+
+  Future<List<dynamic>> getBusinessPosts(String businessId, {int page = 1, int limit = 10}) async {
+    try {
+      final response = await _dio.get(
+        '/businesses/$businessId/posts',
+        queryParameters: {'page': page, 'limit': limit},
+      );
+      if (response.statusCode == 200 && response.data != null) {
+        final List<dynamic>? list = response.data['posts'] ?? response.data['data'];
+        return list ?? [];
+      }
+    } catch (e) {
+      debugPrint('Error getting business posts: $e');
     }
     return [];
   }

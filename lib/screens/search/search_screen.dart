@@ -16,6 +16,8 @@ import '../../widgets/comments_bottom_sheet.dart';
 import '../../widgets/auth_prompt_bottom_sheet.dart';
 import '../community/community_detail_screen.dart';
 import '../profile/public_profile_screen.dart';
+import '../business/business_profile_screen.dart';
+import '../../widgets/verification_badge.dart';
 import '../../widgets/skeleton_loader.dart';
 import '../../widgets/follow_button.dart';
 
@@ -261,10 +263,10 @@ class _SearchScreenState extends State<SearchScreen>
       appBar: AppBar(
         title: const Row(
           children: [
-            Icon(Icons.search, color: AppColors.primary, size: 24),
+            Icon(Icons.explore_outlined, color: AppColors.primary, size: 24),
             SizedBox(width: 8),
             Text(
-              'Search Peto',
+              'Explore Peto',
               style: TextStyle(
                 fontFamily: 'Quicksand',
                 fontSize: 22,
@@ -283,9 +285,9 @@ class _SearchScreenState extends State<SearchScreen>
           labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
           tabs: [
             const Tab(text: 'Top'),
-            Tab(text: 'Posts (${_posts.length})'),
-            Tab(text: 'Users (${_users.length})'),
-            Tab(text: 'Communities (${_communities.length})'),
+            Tab(text: _hasSearched ? 'Posts (${_posts.length})' : 'Posts'),
+            Tab(text: _hasSearched ? 'Users (${_users.length})' : 'Users'),
+            Tab(text: _hasSearched ? 'Communities (${_communities.length})' : 'Communities'),
           ],
         ),
       ),
@@ -650,55 +652,108 @@ class _SearchScreenState extends State<SearchScreen>
       ),
       child: InkWell(
         onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => PublicProfileScreen(
-                userId: user.id,
-                initialUser: user,
+          if (user.isBusiness) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BusinessProfileScreen(
+                  businessId: user.id,
+                ),
               ),
-            ),
-          );
+            );
+          } else {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => PublicProfileScreen(
+                  userId: user.id,
+                  initialUser: user,
+                ),
+              ),
+            );
+          }
         },
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              // User Avatar
+              // Avatar
               CircleAvatar(
                 radius: 24,
-                backgroundColor: AppColors.primaryFixed,
+                backgroundColor: user.isBusiness ? Colors.amber.shade100 : AppColors.primaryFixed,
                 backgroundImage: (user.avatarUrl != null && user.avatarUrl!.isNotEmpty)
                     ? CachedNetworkImageProvider(user.avatarUrl!)
                     : null,
                 child: (user.avatarUrl == null || user.avatarUrl!.isEmpty)
-                    ? const Icon(Icons.person, color: AppColors.primary, size: 24)
+                    ? Icon(
+                        user.isBusiness ? Icons.storefront : Icons.person,
+                        color: user.isBusiness ? Colors.amber.shade900 : AppColors.primary,
+                        size: 24,
+                      )
                     : null,
               ),
               const SizedBox(width: 12),
 
-              // User Info
+              // Info
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      user.displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: AppColors.onSurface,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            user.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: AppColors.onSurface,
+                            ),
+                          ),
+                        ),
+                        if (user.isVerified || user.isBusiness) ...[
+                          const SizedBox(width: 4),
+                          VerificationBadge(
+                            badgeType: user.verificationBadgeType ?? (user.isBusiness ? 'BUSINESS' : null),
+                            size: 16,
+                          ),
+                        ],
+                      ],
                     ),
-                    Text(
-                      '@${user.username}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.onSurfaceVariant,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          '@${user.username}',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.onSurfaceVariant,
+                          ),
+                        ),
+                        if (user.isBusiness) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade50,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.amber.shade300, width: 0.5),
+                            ),
+                            child: Text(
+                              user.category != null && user.category!.isNotEmpty
+                                  ? user.category!
+                                  : 'Business',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.amber.shade900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     if (user.bio != null && user.bio!.isNotEmpty) ...[
                       const SizedBox(height: 4),
@@ -716,13 +771,15 @@ class _SearchScreenState extends State<SearchScreen>
                 ),
               ),
 
-              // Follow / Unfollow Action Button
-              if (!isSelf)
+              // Action Button
+              if (!isSelf && !user.isBusiness)
                 FollowButton(
                   isFollowing: user.isFollowing,
                   isCompact: true,
                   onPressed: () => _toggleFollowUser(user),
-                ),
+                )
+              else if (user.isBusiness)
+                const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.onSurfaceVariant),
             ],
           ),
         ),

@@ -14,12 +14,15 @@ import '../../widgets/comments_bottom_sheet.dart';
 import '../../widgets/auth_prompt_bottom_sheet.dart';
 import '../../widgets/verification_badge.dart';
 import '../posts/create_post_screen.dart';
+import '../posts/post_detail_screen.dart';
 import 'edit_profile_screen.dart';
 import 'bookmarks_screen.dart';
 import 'followers_following_screen.dart';
 import '../settings/settings_screen.dart';
 import '../../models/pet_model.dart';
 import '../../widgets/pet_showcase_section.dart';
+import '../../widgets/identity_switcher_bottom_sheet.dart';
+import '../business/business_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -135,49 +138,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _showPostDetailDialog(Post post) {
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              PostCard(
-                post: post,
-                onLike: () {
-                  final postProvider = Provider.of<PostProvider>(context, listen: false);
-                  postProvider.toggleLike(post.id);
-                  _toggleLocalPostLike(post.id);
-                },
-                onBookmark: () {
-                  final postProvider = Provider.of<PostProvider>(context, listen: false);
-                  postProvider.toggleBookmark(post.id, isCurrentlyBookmarked: post.isBookmarked);
-                  _toggleLocalPostBookmark(post.id);
-                },
-                onComment: () {
-                  Navigator.pop(ctx);
-                  CommentsBottomSheet.show(
-                    context,
-                    postId: post.id,
-                    postAuthorUsername: post.author.username,
-                  );
-                },
-                onPostDeleted: () {
-                  Navigator.pop(ctx);
-                  _handleLocalPostDeleted(post.id);
-                },
-                onPostEdited: (newText) {
-                  _handleLocalPostEdited(post.id, newText);
-                },
-              ),
-            ],
-          ),
+  void _navigateToPostDetail(Post post) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PostDetailScreen(
+          postId: post.id,
+          initialPost: post,
         ),
       ),
-    );
+    ).then((_) {
+      _loadProfileData();
+    });
   }
 
   void _toggleLocalPostLike(String postId) {
@@ -312,16 +283,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
         actions: [
-          // IconButton(
-          //   icon: const Icon(Icons.bookmark_outline),
-          //   tooltip: 'Saved Posts',
-          //   onPressed: () {
-          //     Navigator.push(
-          //       context,
-          //       MaterialPageRoute(builder: (_) => const BookmarksScreen()),
-          //     );
-          //   },
-          // ),
+          if (authProvider.managedBusinesses.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.swap_horiz_rounded),
+              tooltip: 'Switch Identity',
+              onPressed: () => IdentitySwitcherBottomSheet.show(context),
+            ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Settings',
@@ -333,11 +300,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _loadProfileData();
             },
           ),
-          // IconButton(
-          //   icon: const Icon(Icons.logout, color: AppColors.error),
-          //   tooltip: 'Sign Out',
-          //   onPressed: () => authProvider.logout(),
-          // ),
         ],
       ),
       body: RefreshIndicator(
@@ -347,6 +309,46 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (authProvider.isActingAsBusiness)
+                Container(
+                  width: double.infinity,
+                  color: Colors.amber.shade100,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.storefront, color: Colors.amber.shade900, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Acting as: ${authProvider.activeIdentity.name}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: Colors.amber.shade900,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => BusinessProfileScreen(
+                                businessId: authProvider.activeIdentity.id,
+                              ),
+                            ),
+                          );
+                        },
+                        child: const Text('View Business', style: TextStyle(fontSize: 12)),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.swap_horiz_rounded, size: 20),
+                        tooltip: 'Switch Identity',
+                        onPressed: () => IdentitySwitcherBottomSheet.show(context),
+                      ),
+                    ],
+                  ),
+                ),
               // Cover Photo & Avatar Header
               SizedBox(
                 height: 210,
@@ -455,6 +457,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               _loadProfileData();
                             },
                           ),
+                          if (authProvider.managedBusinesses.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            IconButton.outlined(
+                              style: IconButton.styleFrom(
+                                side: BorderSide(
+                                  color: authProvider.isActingAsBusiness
+                                      ? Colors.amber.shade400
+                                      : AppColors.surfaceContainerHigh,
+                                ),
+                                backgroundColor: authProvider.isActingAsBusiness
+                                    ? Colors.amber.shade50
+                                    : null,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                padding: const EdgeInsets.all(8),
+                              ),
+                              icon: Icon(
+                                Icons.swap_horiz_rounded,
+                                size: 18,
+                                color: authProvider.isActingAsBusiness
+                                    ? Colors.amber.shade900
+                                    : AppColors.onSurface,
+                              ),
+                              tooltip: 'Switch Identity',
+                              onPressed: () => IdentitySwitcherBottomSheet.show(context),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -613,6 +641,148 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
+
+              // Managed Business Card (if user has business profiles)
+              if (authProvider.managedBusinesses.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.storefront_rounded, size: 18, color: Colors.amber.shade800),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'My Business Profiles',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.onSurface,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (authProvider.managedBusinesses.length > 1)
+                            TextButton.icon(
+                              onPressed: () => IdentitySwitcherBottomSheet.show(context),
+                              icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                              label: const Text('Switch', style: TextStyle(fontSize: 12)),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.amber.shade900,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      ...authProvider.managedBusinesses.map((biz) {
+                        final bizHandle = biz.username != null && biz.username!.isNotEmpty
+                            ? biz.username!
+                            : biz.name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]'), '');
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Colors.amber.shade50, Colors.white],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.amber.shade200),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.amber.shade100.withValues(alpha: 0.4),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 22,
+                                  backgroundColor: Colors.amber.shade100,
+                                  backgroundImage: (biz.avatarUrl != null && biz.avatarUrl!.isNotEmpty)
+                                      ? CachedNetworkImageProvider(biz.avatarUrl!)
+                                      : null,
+                                  child: (biz.avatarUrl == null || biz.avatarUrl!.isEmpty)
+                                      ? Icon(Icons.storefront_rounded, color: Colors.amber.shade800, size: 22)
+                                      : null,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Flexible(
+                                            child: Text(
+                                              biz.name,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14,
+                                                color: Color(0xFF1E293B),
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          const VerificationBadge(badgeType: 'BUSINESS', size: 15),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '@$bizHandle • ${biz.businessCategory ?? 'Business'}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.amber.shade900,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => BusinessProfileScreen(businessId: biz.id),
+                                      ),
+                                    );
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.amber.shade500,
+                                    foregroundColor: Colors.white,
+                                    elevation: 0,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'View Profile',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ],
 
               // Pet Showcase Section
               PetShowcaseSection(
@@ -779,7 +949,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final hasMedia = post.media.isNotEmpty;
 
         return InkWell(
-          onTap: () => _showPostDetailDialog(post),
+          onTap: () => _navigateToPostDetail(post),
           borderRadius: BorderRadius.circular(8),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),

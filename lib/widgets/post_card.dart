@@ -12,6 +12,7 @@ import 'post_video_player.dart';
 import '../models/reel_model.dart';
 import '../screens/reels/reels_screen.dart';
 import '../screens/profile/public_profile_screen.dart';
+import '../screens/business/business_profile_screen.dart';
 import 'report_bottom_sheet.dart';
 import 'image_viewer_screen.dart';
 import 'verification_badge.dart';
@@ -51,6 +52,19 @@ class PostCard extends StatelessWidget {
   }
 
   void _openUserProfile(BuildContext context) {
+    if (post.isBusinessPost || post.author.isBusinessBadge || post.businessId != null) {
+      final bizId = post.businessId ?? post.author.id;
+      if (bizId.isNotEmpty) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => BusinessProfileScreen(businessId: bizId),
+          ),
+        );
+        return;
+      }
+    }
+
     if (post.author.id.isEmpty) return;
     Navigator.push(
       context,
@@ -337,9 +351,28 @@ class PostCard extends StatelessWidget {
     );
   }
 
+  String _formatRelativeTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inSeconds < 60) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}h';
+    } else if (difference.inDays == 1) {
+      return 'Yesterday';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d';
+    } else {
+      return DateFormat.yMMMd().format(dateTime);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final formattedDate = DateFormat.yMMMd().format(post.createdAt);
+    final formattedDate = _formatRelativeTime(post.createdAt);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final currentUserId = authProvider.user?.id;
     final isOwner = currentUserId != null &&
@@ -495,13 +528,14 @@ class PostCard extends StatelessWidget {
                         ),
                       ),
                       PopupMenuButton<String>(
+                        tooltip: 'More options',
                         icon: Icon(
                           Icons.more_vert,
-                          size: 18,
+                          size: 20,
                           color: AppColors.onSurfaceVariant.withValues(alpha: 0.7),
                         ),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.all(6),
+                        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -730,66 +764,79 @@ class PostCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   // Like Button
-                  InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: onLike,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      child: Row(
-                        children: [
-                          Icon(
-                            post.isLiked ? Icons.favorite : Icons.favorite_border,
-                            color: post.isLiked ? AppColors.error : AppColors.outline,
-                            size: 22,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '${post.likesCount}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
+                  Semantics(
+                    button: true,
+                    label: post.isLiked ? 'Unlike post, ${post.likesCount} likes' : 'Like post, ${post.likesCount} likes',
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: onLike,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        child: Row(
+                          children: [
+                            Icon(
+                              post.isLiked ? Icons.favorite : Icons.favorite_border,
                               color: post.isLiked ? AppColors.error : AppColors.outline,
+                              size: 22,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 6),
+                            Text(
+                              '${post.likesCount}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: post.isLiked ? AppColors.error : AppColors.outline,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
 
                   // Comment Button
-                  InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => _handleCommentTap(context),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.mode_comment_outlined,
-                            size: 20,
-                            color: AppColors.outline,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '${post.commentsCount}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
+                  Semantics(
+                    button: true,
+                    label: 'Comments, ${post.commentsCount} comments',
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () => _handleCommentTap(context),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.mode_comment_outlined,
+                              size: 20,
                               color: AppColors.outline,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 6),
+                            Text(
+                              '${post.commentsCount}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: AppColors.outline,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
 
                   // Bookmark Button
-                  IconButton(
-                    onPressed: onBookmark,
-                    icon: Icon(
-                      post.isBookmarked ? Icons.bookmark : Icons.bookmark_border,
-                      color: post.isBookmarked ? AppColors.primary : AppColors.outline,
-                      size: 22,
+                  Semantics(
+                    button: true,
+                    label: post.isBookmarked ? 'Remove bookmark' : 'Bookmark post',
+                    child: IconButton(
+                      tooltip: post.isBookmarked ? 'Remove bookmark' : 'Bookmark post',
+                      onPressed: onBookmark,
+                      icon: Icon(
+                        post.isBookmarked ? Icons.bookmark : Icons.bookmark_border,
+                        color: post.isBookmarked ? AppColors.primary : AppColors.outline,
+                        size: 22,
+                      ),
                     ),
                   ),
                 ],

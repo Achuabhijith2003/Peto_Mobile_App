@@ -1746,7 +1746,7 @@ class _EditPetBottomSheetState extends State<_EditPetBottomSheet> {
                   // Species
                   _buildLabel('Species *'),
                   DropdownButtonFormField<String>(
-                    value: _selectedSpecies,
+                    initialValue: _selectedSpecies,
                     decoration: _inputDecoration('Select species'),
                     items: _speciesList
                         .map((s) => DropdownMenuItem(value: s['value'], child: Text(s['label']!)))
@@ -1800,7 +1800,7 @@ class _EditPetBottomSheetState extends State<_EditPetBottomSheet> {
                   // Sex
                   _buildLabel('Sex'),
                   DropdownButtonFormField<String>(
-                    value: _selectedSex,
+                    initialValue: _selectedSex,
                     decoration: _inputDecoration('Select sex'),
                     items: _sexList
                         .map((s) => DropdownMenuItem(value: s['value'], child: Text(s['label']!)))
@@ -1873,7 +1873,7 @@ class _EditPetBottomSheetState extends State<_EditPetBottomSheet> {
                           children: [
                             _buildLabel('Size'),
                             DropdownButtonFormField<String>(
-                              value: _selectedSize,
+                              initialValue: _selectedSize,
                               decoration: _inputDecoration('Select size'),
                               items: _sizeList
                                   .map((s) => DropdownMenuItem(value: s['value'], child: Text(s['label']!)))
@@ -1942,7 +1942,7 @@ class _EditPetBottomSheetState extends State<_EditPetBottomSheet> {
                   // Visibility Settings
                   _buildLabel('Showcase Visibility'),
                   DropdownButtonFormField<String>(
-                    value: _selectedVisibility,
+                    initialValue: _selectedVisibility,
                     decoration: _inputDecoration('Select visibility'),
                     items: _visibilityList
                         .map((v) => DropdownMenuItem(

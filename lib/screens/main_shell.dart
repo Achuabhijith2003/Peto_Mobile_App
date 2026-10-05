@@ -40,6 +40,7 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _showHealthErrorDialog(String message) {
+    debugPrint('API health check error: $message');
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -47,52 +48,22 @@ class _MainShellState extends State<MainShell> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [
-            Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 28),
+            Icon(Icons.cloud_off_rounded, color: AppColors.error, size: 28),
             SizedBox(width: 10),
             Text(
-              'API Health Error',
+              'Connection Notice',
               style: TextStyle(
                 fontFamily: 'Quicksand',
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
-                color: AppColors.error,
+                color: AppColors.onSurface,
               ),
             ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Could not connect to Peto API server at:',
-              style: TextStyle(fontSize: 13, color: AppColors.onSurfaceVariant),
-            ),
-            const SizedBox(height: 4),
-            const SelectableText(
-              'https://peto-web.onrender.com/health',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: AppColors.secondary,
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.errorContainer,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                message,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.onErrorContainer,
-                ),
-              ),
-            ),
-          ],
+        content: const Text(
+          "We couldn't connect to Peto right now. Please check your internet connection and try again.",
+          style: TextStyle(fontSize: 13, color: AppColors.onSurfaceVariant, height: 1.4),
         ),
         actions: [
           TextButton(
@@ -141,17 +112,17 @@ class _MainShellState extends State<MainShell> {
           BottomNavigationBarItem(
             icon: Icon(Icons.home_outlined),
             activeIcon: Icon(Icons.home),
-            label: 'Home',
+            label: 'Feed',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.groups_outlined),
             activeIcon: Icon(Icons.groups),
-            label: 'Community',
+            label: 'Communities',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.search_outlined),
-            activeIcon: Icon(Icons.search),
-            label: 'Search',
+            icon: Icon(Icons.explore_outlined),
+            activeIcon: Icon(Icons.explore),
+            label: 'Explore',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.play_circle_outline),

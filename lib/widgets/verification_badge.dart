@@ -13,33 +13,28 @@ class VerificationBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Color badgeColor;
-    IconData iconData = Icons.verified;
+    const IconData iconData = Icons.verified;
     String tooltip;
 
     final type = (badgeType ?? 'PERSON').toUpperCase();
 
-    switch (type) {
-      case 'BUSINESS':
-        badgeColor = const Color(0xFF0284C7); // Sky / Blue for Business
-        tooltip = 'Verified Business Partner';
-        break;
-      case 'ADVERTISER':
-        badgeColor = const Color(0xFFF59E0B); // Amber / Gold for Advertiser
-        tooltip = 'Verified Peto Advertiser';
-        break;
-      case 'PERSON':
-      default:
-        badgeColor = const Color(0xFF10B981); // Emerald Green for Verified Pet Parent
-        tooltip = 'Verified Pet Parent';
-        break;
+    if (type.contains('BUSINESS')) {
+      badgeColor = const Color(0xFFEAB308); // Yellow / Amber for Business
+      tooltip = 'Business verified';
+    } else {
+      badgeColor = const Color(0xFF2563EB); // Blue for Person
+      tooltip = 'Person verified';
     }
 
-    return Tooltip(
-      message: tooltip,
-      child: Icon(
-        iconData,
-        size: size,
-        color: badgeColor,
+    return Semantics(
+      label: tooltip,
+      child: Tooltip(
+        message: tooltip,
+        child: Icon(
+          iconData,
+          size: size,
+          color: badgeColor,
+        ),
       ),
     );
   }

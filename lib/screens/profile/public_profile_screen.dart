@@ -18,6 +18,7 @@ import '../../models/pet_model.dart';
 import '../../widgets/pet_showcase_section.dart';
 import '../../widgets/skeleton_loader.dart';
 import '../../widgets/follow_button.dart';
+import '../business/business_profile_screen.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   final String userId;
@@ -51,6 +52,19 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     super.initState();
     _user = widget.initialUser;
     if (_user != null) {
+      if (_user!.isBusiness) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BusinessProfileScreen(businessId: widget.userId),
+              ),
+            );
+          }
+        });
+        return;
+      }
       _isFollowing = _user!.isFollowing;
       _followersCount = _user!.followersCount;
       _followingCount = _user!.followingCount;
@@ -75,6 +89,15 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         final userData = userRes.data['data'] ?? userRes.data['user'] ?? userRes.data;
         if (userData is Map<String, dynamic>) {
           final loadedUser = User.fromJson(userData);
+          if (loadedUser.isBusiness && mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BusinessProfileScreen(businessId: loadedUser.id),
+              ),
+            );
+            return;
+          }
           _user = loadedUser;
           _isFollowing = loadedUser.isFollowing;
           _followersCount = loadedUser.followersCount;

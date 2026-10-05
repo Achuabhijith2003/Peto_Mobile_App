@@ -9,6 +9,8 @@ import '../providers/auth_provider.dart';
 import '../providers/post_provider.dart';
 import '../theme/app_theme.dart';
 import '../screens/profile/public_profile_screen.dart';
+import '../screens/business/business_profile_screen.dart';
+import 'verification_badge.dart';
 import 'auth_prompt_bottom_sheet.dart';
 
 class CommentsBottomSheet extends StatefulWidget {
@@ -180,6 +182,15 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
   }
 
   void _openUserProfile(User author) {
+    if (author.isBusinessBadge || author.verificationBadgeType == 'BUSINESS') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => BusinessProfileScreen(businessId: author.id),
+        ),
+      );
+      return;
+    }
     final targetId = author.id.isNotEmpty ? author.id : author.username;
     if (targetId.isEmpty) return;
     Navigator.push(
@@ -444,13 +455,25 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                                                 children: [
                                                   GestureDetector(
                                                     onTap: () => _openUserProfile(comment.author),
-                                                    child: Text(
-                                                      comment.author.username,
-                                                      style: const TextStyle(
-                                                        fontWeight: FontWeight.bold,
-                                                        fontSize: 13,
-                                                        color: AppColors.onSurface,
-                                                      ),
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Text(
+                                                          comment.author.username,
+                                                          style: const TextStyle(
+                                                            fontWeight: FontWeight.bold,
+                                                            fontSize: 13,
+                                                            color: AppColors.onSurface,
+                                                          ),
+                                                        ),
+                                                        if (comment.author.isVerified || comment.isBusinessComment) ...[
+                                                          const SizedBox(width: 4),
+                                                          VerificationBadge(
+                                                            badgeType: comment.author.verificationBadgeType ?? (comment.isBusinessComment ? 'BUSINESS' : null),
+                                                            size: 14,
+                                                          ),
+                                                        ],
+                                                      ],
                                                     ),
                                                   ),
                                                   const SizedBox(width: 8),
@@ -583,15 +606,27 @@ class _CommentsBottomSheetState extends State<CommentsBottomSheet> {
                                                           children: [
                                                             GestureDetector(
                                                               onTap: () => _openUserProfile(reply.author),
-                                                              child: Text(
-                                                                reply.author.username,
-                                                                style: const TextStyle(
-                                                                  fontWeight: FontWeight.bold,
-                                                                  fontSize: 12,
-                                                                  color: AppColors.onSurface,
-                                                                ),
-                                                              ),
-                                                            ),
+                                                              child: Row(
+                                                                mainAxisSize: MainAxisSize.min,
+                                                                children: [
+                                                                  Text(
+                                                                    reply.author.username,
+                                                                    style: const TextStyle(
+                                                                      fontWeight: FontWeight.bold,
+                                                                      fontSize: 12,
+                                                                      color: AppColors.onSurface,
+                                                                    ),
+                                                                  ),
+                                                                  if (reply.author.isVerified || reply.isBusinessComment) ...[
+                                                                    const SizedBox(width: 4),
+                                                                    VerificationBadge(
+                                                                      badgeType: reply.author.verificationBadgeType ?? (reply.isBusinessComment ? 'BUSINESS' : null),
+                                                                      size: 13,
+                                                                    ),
+                                                                  ],
+                                                                ],
+                                                             ),
+                                                           ),
                                                             const SizedBox(width: 6),
                                                             Text(
                                                               _formatTimestamp(reply.createdAt),

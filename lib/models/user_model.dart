@@ -59,6 +59,9 @@ class User {
   final bool isFollowing;
   final bool isVerified;
   final String? verificationBadgeType;
+  final String? type;
+  final bool isBusiness;
+  final String? category;
 
   User({
     required this.id,
@@ -74,6 +77,9 @@ class User {
     this.isFollowing = false,
     this.isVerified = false,
     this.verificationBadgeType,
+    this.type,
+    this.isBusiness = false,
+    this.category,
   });
 
   bool get verified => isVerified;
@@ -149,6 +155,11 @@ class User {
           json['verificationBadgeType']?.toString() ??
           profileData['verification_badge_type']?.toString() ??
           profileData['verificationBadgeType']?.toString(),
+      type: json['type']?.toString(),
+      isBusiness: json['is_business'] == true ||
+          json['type']?.toString().toUpperCase() == 'BUSINESS' ||
+          json['verification_badge_type']?.toString().toUpperCase() == 'BUSINESS',
+      category: json['category']?.toString(),
     );
   }
 
@@ -200,3 +211,123 @@ class User {
     );
   }
 }
+
+class BusinessModel {
+  final String id;
+  final String name;
+  final String legalName;
+  final String? username;
+  final String countryCode;
+  final String? state;
+  final String? city;
+  final String? websiteUrl;
+  final String? publicEmail;
+  final String? publicPhone;
+  final String? businessCategory;
+  final String? description;
+  final String? avatarUrl;
+  final String? coverUrl;
+  final bool isVerified;
+  final String? role;
+  final bool canManage;
+
+  BusinessModel({
+    required this.id,
+    required this.name,
+    required this.legalName,
+    this.username,
+    required this.countryCode,
+    this.state,
+    this.city,
+    this.websiteUrl,
+    this.publicEmail,
+    this.publicPhone,
+    this.businessCategory,
+    this.description,
+    this.avatarUrl,
+    this.coverUrl,
+    this.isVerified = false,
+    this.role,
+    this.canManage = false,
+  });
+
+  String get category => businessCategory ?? '';
+
+  factory BusinessModel.fromJson(Map<String, dynamic> json) {
+    final verif = json['verification'] is Map ? json['verification'] as Map : null;
+    final isV = json['is_verified'] == true ||
+        verif?['verified'] == true ||
+        verif?['status'] == 'APPROVED';
+    final role = json['role']?.toString();
+    final canM = json['canManage'] == true ||
+        json['can_manage'] == true ||
+        role == 'OWNER' ||
+        role == 'ADMIN' ||
+        json['isOwner'] == true;
+
+    return BusinessModel(
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Business',
+      legalName: json['legal_name']?.toString() ?? json['name']?.toString() ?? '',
+      username: json['username']?.toString(),
+      countryCode: json['country_code']?.toString() ?? 'IN',
+      state: json['state']?.toString(),
+      city: json['city']?.toString(),
+      websiteUrl: json['website_url']?.toString(),
+      publicEmail: json['public_email']?.toString(),
+      publicPhone: json['public_phone']?.toString(),
+      businessCategory: json['business_category']?.toString(),
+      description: json['description']?.toString(),
+      avatarUrl: json['avatar_url']?.toString(),
+      coverUrl: json['cover_url']?.toString(),
+      isVerified: isV,
+      role: role,
+      canManage: canM,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'legal_name': legalName,
+      'username': username,
+      'country_code': countryCode,
+      'state': state,
+      'city': city,
+      'website_url': websiteUrl,
+      'public_email': publicEmail,
+      'public_phone': publicPhone,
+      'business_category': businessCategory,
+      'description': description,
+      'avatar_url': avatarUrl,
+      'cover_url': coverUrl,
+      'is_verified': isVerified,
+      'role': role,
+      'canManage': canManage,
+    };
+  }
+}
+
+class ActiveIdentityModel {
+  final String type; // 'PERSON' or 'BUSINESS'
+  final String id;
+  final String name;
+  final String? avatarUrl;
+  final bool isVerified;
+  final String? role;
+  final BusinessModel? business;
+
+  ActiveIdentityModel({
+    required this.type,
+    required this.id,
+    required this.name,
+    this.avatarUrl,
+    this.isVerified = false,
+    this.role,
+    this.business,
+  });
+
+  bool get isBusiness => type == 'BUSINESS';
+}
+

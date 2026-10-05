@@ -111,6 +111,8 @@ class PostComment {
   final DateTime createdAt;
   final String? parentCommentId;
   final List<PostMention> mentions;
+  final String? authorType;
+  final String? businessId;
 
   PostComment({
     required this.id,
@@ -119,19 +121,29 @@ class PostComment {
     required this.createdAt,
     this.parentCommentId,
     this.mentions = const [],
+    this.authorType,
+    this.businessId,
   });
+
+  bool get isBusinessComment => authorType == 'BUSINESS' || businessId != null;
 
   factory PostComment.fromJson(Map<String, dynamic> json) {
     User commentAuthor;
+    final aType = json['author_type']?.toString();
+    final bId = json['business_id']?.toString();
+
     if (json['author'] != null && json['author'] is Map<String, dynamic>) {
       commentAuthor = User.fromJson(json['author'] as Map<String, dynamic>);
     } else if (json['profiles'] != null && json['profiles'] is Map<String, dynamic>) {
       final p = json['profiles'] as Map<String, dynamic>;
+      final isBiz = aType == 'BUSINESS' || bId != null || p['is_business'] == true || p['badge_type'] == 'BUSINESS_VERIFIED';
       commentAuthor = User(
         id: p['id']?.toString() ?? '',
         email: '',
         username: p['username']?.toString() ?? p['full_name']?.toString() ?? 'Pet Lover',
         avatarUrl: p['avatar_url']?.toString(),
+        isVerified: isBiz || p['verified'] == true || p['is_verified'] == true,
+        verificationBadgeType: isBiz ? 'BUSINESS' : p['verification_badge_type']?.toString(),
       );
     } else if (json['user'] != null && json['user'] is Map<String, dynamic>) {
       commentAuthor = User.fromJson(json['user'] as Map<String, dynamic>);
@@ -153,6 +165,8 @@ class PostComment {
           : DateTime.now(),
       parentCommentId: json['parent_comment_id']?.toString(),
       mentions: mentionsList,
+      authorType: aType,
+      businessId: bId,
     );
   }
 }
@@ -171,6 +185,8 @@ class Post {
   final DateTime createdAt;
   final List<PostMention> mentions;
   final List<PostTaggedPet> taggedPets;
+  final String? authorType;
+  final String? businessId;
 
   Post({
     required this.id,
@@ -186,7 +202,11 @@ class Post {
     required this.createdAt,
     this.mentions = const [],
     this.taggedPets = const [],
+    this.authorType,
+    this.businessId,
   });
+
+  bool get isBusinessPost => authorType == 'BUSINESS' || businessId != null || author.isBusinessBadge;
 
   factory Post.fromJson(Map<String, dynamic> json) {
     var mediaList = <PostMedia>[];
@@ -200,6 +220,9 @@ class Post {
     } else if (json['video_url'] != null && json['video_url'].toString().isNotEmpty) {
       mediaList = [PostMedia.fromJson(json['video_url'])];
     }
+
+    final authorType = json['author_type']?.toString();
+    final businessId = json['business_id']?.toString();
 
     User authorUser;
     if (json['author'] != null && json['author'] is Map) {
@@ -223,6 +246,14 @@ class Post {
         username: 'Pet Lover',
         isVerified: json['verified'] == true || json['is_verified'] == true,
         verificationBadgeType: json['verification_badge_type']?.toString(),
+      );
+    }
+
+    final isBiz = authorType == 'BUSINESS' || businessId != null || json['author']?['is_business'] == true || json['author']?['badge_type'] == 'BUSINESS_VERIFIED';
+    if (isBiz) {
+      authorUser = authorUser.copyWith(
+        verificationBadgeType: 'BUSINESS',
+        isVerified: true,
       );
     }
 
@@ -275,6 +306,8 @@ class Post {
           : DateTime.now(),
       mentions: mentionsList,
       taggedPets: taggedPetsList,
+      authorType: authorType,
+      businessId: businessId,
     );
   }
 
@@ -287,6 +320,8 @@ class Post {
     bool? isBookmarked,
     List<PostMention>? mentions,
     List<PostTaggedPet>? taggedPets,
+    String? authorType,
+    String? businessId,
   }) {
     return Post(
       id: id,
@@ -302,6 +337,8 @@ class Post {
       createdAt: createdAt,
       mentions: mentions ?? this.mentions,
       taggedPets: taggedPets ?? this.taggedPets,
+      authorType: authorType ?? this.authorType,
+      businessId: businessId ?? this.businessId,
     );
   }
 }

@@ -341,9 +341,11 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer> {
               ),
             ),
 
-          // Bottom Progress Line
+          // Bottom Progress Line with safe area inset and touch padding
           Positioned(
-            bottom: 0,
+            bottom: MediaQuery.paddingOf(context).bottom > 0
+                ? MediaQuery.paddingOf(context).bottom
+                : 2,
             left: 0,
             right: 0,
             child: VideoProgressIndicator(
@@ -352,9 +354,9 @@ class _ReelVideoPlayerState extends State<ReelVideoPlayer> {
               colors: const VideoProgressColors(
                 playedColor: AppColors.primaryContainer,
                 bufferedColor: Colors.white24,
-                backgroundColor: Colors.transparent,
+                backgroundColor: Colors.white12,
               ),
-              padding: EdgeInsets.zero,
+              padding: const EdgeInsets.symmetric(vertical: 8),
             ),
           ),
         ],
