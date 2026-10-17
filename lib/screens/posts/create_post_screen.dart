@@ -89,10 +89,15 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     color: AppColors.primaryContainer.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.photo_library_outlined, color: AppColors.primary),
+                  child: const Icon(
+                    Icons.photo_library_outlined,
+                    color: AppColors.primary,
+                  ),
                 ),
                 title: Text('Select Multiple Photos (Up to $remainingSlots)'),
-                subtitle: const Text('Pick multiple images at once from your gallery'),
+                subtitle: const Text(
+                  'Pick multiple images at once from your gallery',
+                ),
                 onTap: () => Navigator.pop(ctx, 'multi_photos'),
               ),
               ListTile(
@@ -102,7 +107,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     color: AppColors.secondaryContainer.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.camera_alt_outlined, color: AppColors.secondary),
+                  child: const Icon(
+                    Icons.camera_alt_outlined,
+                    color: AppColors.secondary,
+                  ),
                 ),
                 title: const Text('Take Photo with Camera'),
                 subtitle: const Text('Snap a picture right now'),
@@ -115,7 +123,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                     color: AppColors.tertiaryContainer.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.video_library_outlined, color: AppColors.tertiary),
+                  child: const Icon(
+                    Icons.video_library_outlined,
+                    color: AppColors.tertiary,
+                  ),
                 ),
                 title: const Text('Choose Video from Gallery'),
                 subtitle: const Text('Upload a short video or clip'),
@@ -138,7 +149,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       if (mounted) {
         setState(() {
           _isUploadingMedia = false;
-          final valid = results.where((r) => r.uploadedUrl != null && r.uploadedUrl!.isNotEmpty);
+          final valid = results.where(
+            (r) => r.uploadedUrl != null && r.uploadedUrl!.isNotEmpty,
+          );
           _mediaList.addAll(valid);
         });
       }
@@ -152,7 +165,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       if (mounted) {
         setState(() {
           _isUploadingMedia = false;
-          if (result != null && result.uploadedUrl != null && result.uploadedUrl!.isNotEmpty) {
+          if (result != null &&
+              result.uploadedUrl != null &&
+              result.uploadedUrl!.isNotEmpty) {
             _mediaList.add(result);
           }
         });
@@ -167,7 +182,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       if (mounted) {
         setState(() {
           _isUploadingMedia = false;
-          if (result != null && result.uploadedUrl != null && result.uploadedUrl!.isNotEmpty) {
+          if (result != null &&
+              result.uploadedUrl != null &&
+              result.uploadedUrl!.isNotEmpty) {
             _mediaList.add(result);
           }
         });
@@ -223,10 +240,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         final pets = petRes.data['data'] as List? ?? [];
         for (final p in pets) {
           if (p is Map) {
-            combined.add({
-              ...Map<String, dynamic>.from(p),
-              'isPet': true,
-            });
+            combined.add({...Map<String, dynamic>.from(p), 'isPet': true});
           }
         }
       }
@@ -236,10 +250,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         final users = userRes.data['data'] as List? ?? [];
         for (final u in users) {
           if (u is Map) {
-            combined.add({
-              ...Map<String, dynamic>.from(u),
-              'isPet': false,
-            });
+            combined.add({...Map<String, dynamic>.from(u), 'isPet': false});
           }
         }
       }
@@ -267,7 +278,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         ? (item['name']?.toString() ?? 'pet')
         : (item['username']?.toString() ?? 'user');
 
-    final replaced = textBeforeCursor.replaceFirst(RegExp(r'@([a-zA-Z0-9_]*)$'), '@$name ');
+    final replaced = textBeforeCursor.replaceFirst(
+      RegExp(r'@([a-zA-Z0-9_]*)$'),
+      '@$name ',
+    );
     final newText = replaced + textAfterCursor;
 
     _contentController.value = TextEditingValue(
@@ -311,9 +325,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => _PetPickerBottomSheet(
-        initiallySelected: _taggedPets,
-      ),
+      builder: (ctx) => _PetPickerBottomSheet(initiallySelected: _taggedPets),
     );
 
     if (result != null) {
@@ -325,20 +337,30 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   void _submitPost() async {
-    final validMedia = _mediaList.where((m) => m.uploadedUrl != null && m.uploadedUrl!.isNotEmpty).toList();
+    final validMedia = _mediaList
+        .where((m) => m.uploadedUrl != null && m.uploadedUrl!.isNotEmpty)
+        .toList();
     if (_contentController.text.trim().isEmpty && validMedia.isEmpty) return;
 
     setState(() => _isLoading = true);
     final postProvider = Provider.of<PostProvider>(context, listen: false);
-    final mediaUrls = validMedia.map((m) => m.uploadedUrl!).toList();
+    // Link the media rows returned by /media/upload. URLs take a legacy path
+    // that can insert a second row without the processed video's thumbnail.
+    final mediaRefs = validMedia
+        .map((m) => m.mediaId ?? m.uploadedUrl!)
+        .toList();
 
     final success = await postProvider.createPost(
       _contentController.text.trim(),
-      mediaUrls: mediaUrls,
-      mediaUrl: mediaUrls.isNotEmpty ? mediaUrls.first : null,
+      mediaUrls: mediaRefs,
+      mediaUrl: mediaRefs.isNotEmpty ? mediaRefs.first : null,
       communityId: widget.communityId,
-      petId: _taggedPets.isNotEmpty ? _taggedPets.first['id'].toString() : widget.petId,
-      mentionedUserIds: _mentionedUsers.map((u) => u['id']!.toString()).toList(),
+      petId: _taggedPets.isNotEmpty
+          ? _taggedPets.first['id'].toString()
+          : widget.petId,
+      mentionedUserIds: _mentionedUsers
+          .map((u) => u['id']!.toString())
+          .toList(),
       taggedPetIds: _taggedPets.map((p) => p['id']!.toString()).toList(),
     );
 
@@ -370,15 +392,24 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.videocam_rounded, size: 36, color: Colors.white),
+                            const Icon(
+                              Icons.videocam_rounded,
+                              size: 36,
+                              color: Colors.white,
+                            ),
                             const SizedBox(height: 6),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
                               child: Text(
                                 item.localPath.split('/').last.split('\\').last,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
                               ),
                             ),
                           ],
@@ -386,22 +417,19 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                       ),
                     )
                   : (File(item.localPath).existsSync())
-                      ? Image.file(
-                          File(item.localPath),
-                          fit: BoxFit.cover,
-                        )
-                      : CachedNetworkImage(
-                          imageUrl: item.uploadedUrl ?? '',
-                          fit: BoxFit.cover,
-                          placeholder: (_, _) => const Center(
-                            child: SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          ),
-                          errorWidget: (_, _, _) => const Icon(Icons.pets),
+                  ? Image.file(File(item.localPath), fit: BoxFit.cover)
+                  : CachedNetworkImage(
+                      imageUrl: item.uploadedUrl ?? '',
+                      fit: BoxFit.cover,
+                      placeholder: (_, _) => const Center(
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
+                      ),
+                      errorWidget: (_, _, _) => const Icon(Icons.pets),
+                    ),
             ),
           ),
 
@@ -443,7 +471,11 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   const SizedBox(width: 3),
                   Text(
                     item.isVideo ? 'Video' : '#${index + 1}',
-                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
@@ -456,7 +488,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hasValidContent = _contentController.text.trim().isNotEmpty || _mediaList.isNotEmpty;
+    final hasValidContent =
+        _contentController.text.trim().isNotEmpty || _mediaList.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -483,38 +516,61 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 final activeIdentity = authProvider.activeIdentity;
                 final hasBusinesses = authProvider.managedBusinesses.isNotEmpty;
 
-                if (!activeIdentity.isBusiness && !hasBusinesses) return const SizedBox.shrink();
+                if (!activeIdentity.isBusiness && !hasBusinesses) {
+                  return const SizedBox.shrink();
+                }
 
                 final isBiz = activeIdentity.isBusiness;
 
                 return InkWell(
-                  onTap: hasBusinesses ? () => IdentitySwitcherBottomSheet.show(context) : null,
+                  onTap: hasBusinesses
+                      ? () => IdentitySwitcherBottomSheet.show(context)
+                      : null,
                   borderRadius: BorderRadius.circular(14),
                   child: Container(
                     margin: const EdgeInsets.only(bottom: 14),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
-                      color: isBiz ? Colors.amber.shade50 : AppColors.surfaceContainerLow,
+                      color: isBiz
+                          ? Colors.amber.shade50
+                          : AppColors.surfaceContainerLow,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: isBiz ? Colors.amber.shade200 : AppColors.outlineVariant.withValues(alpha: 0.3),
+                        color: isBiz
+                            ? Colors.amber.shade200
+                            : AppColors.outlineVariant.withValues(alpha: 0.3),
                       ),
                     ),
                     child: Row(
                       children: [
                         CircleAvatar(
                           radius: 14,
-                          backgroundColor: isBiz ? Colors.amber.shade200 : AppColors.primaryFixed,
-                          backgroundImage: activeIdentity.avatarUrl != null && activeIdentity.avatarUrl!.isNotEmpty
-                              ? CachedNetworkImageProvider(activeIdentity.avatarUrl!)
+                          backgroundColor: isBiz
+                              ? Colors.amber.shade200
+                              : AppColors.primaryFixed,
+                          backgroundImage:
+                              activeIdentity.avatarUrl != null &&
+                                  activeIdentity.avatarUrl!.isNotEmpty
+                              ? CachedNetworkImageProvider(
+                                  activeIdentity.avatarUrl!,
+                                )
                               : null,
-                          child: activeIdentity.avatarUrl == null || activeIdentity.avatarUrl!.isEmpty
+                          child:
+                              activeIdentity.avatarUrl == null ||
+                                  activeIdentity.avatarUrl!.isEmpty
                               ? Text(
-                                  activeIdentity.name.isNotEmpty ? activeIdentity.name[0].toUpperCase() : (isBiz ? 'B' : 'U'),
+                                  activeIdentity.name.isNotEmpty
+                                      ? activeIdentity.name[0].toUpperCase()
+                                      : (isBiz ? 'B' : 'U'),
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
-                                    color: isBiz ? Colors.amber.shade900 : AppColors.primary,
+                                    color: isBiz
+                                        ? Colors.amber.shade900
+                                        : AppColors.primary,
                                   ),
                                 )
                               : null,
@@ -530,14 +586,19 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.bold,
-                                    color: isBiz ? Colors.amber.shade900 : AppColors.onSurface,
+                                    color: isBiz
+                                        ? Colors.amber.shade900
+                                        : AppColors.onSurface,
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                               if (isBiz) ...[
                                 const SizedBox(width: 4),
-                                const VerificationBadge(badgeType: 'BUSINESS_VERIFIED', size: 16),
+                                const VerificationBadge(
+                                  badgeType: 'BUSINESS_VERIFIED',
+                                  size: 16,
+                                ),
                               ],
                             ],
                           ),
@@ -545,22 +606,35 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                         if (hasBusinesses) ...[
                           const SizedBox(width: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
-                              color: isBiz ? Colors.amber.shade200 : AppColors.surfaceContainerHigh,
+                              color: isBiz
+                                  ? Colors.amber.shade200
+                                  : AppColors.surfaceContainerHigh,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.swap_horiz_rounded, size: 14, color: isBiz ? Colors.amber.shade900 : AppColors.onSurfaceVariant),
+                                Icon(
+                                  Icons.swap_horiz_rounded,
+                                  size: 14,
+                                  color: isBiz
+                                      ? Colors.amber.shade900
+                                      : AppColors.onSurfaceVariant,
+                                ),
                                 const SizedBox(width: 2),
                                 Text(
                                   'Switch',
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
-                                    color: isBiz ? Colors.amber.shade900 : AppColors.onSurfaceVariant,
+                                    color: isBiz
+                                        ? Colors.amber.shade900
+                                        : AppColors.onSurfaceVariant,
                                   ),
                                 ),
                               ],
@@ -595,17 +669,26 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 decoration: BoxDecoration(
                   color: AppColors.surfaceContainerLow,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.outline.withValues(alpha: 0.2)),
+                  border: Border.all(
+                    color: AppColors.outline.withValues(alpha: 0.2),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       child: Text(
                         'Mention suggestions',
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.outline),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.outline,
+                        ),
                       ),
                     ),
                     if (_isLoadingMentions)
@@ -615,7 +698,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                           child: SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.primary,
+                            ),
                           ),
                         ),
                       )
@@ -625,7 +711,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                         final avatarUrl = item['avatar_url']?.toString();
                         final title = isPet
                             ? (item['name']?.toString() ?? 'Pet')
-                            : (item['full_name']?.toString() ?? item['username']?.toString() ?? 'User');
+                            : (item['full_name']?.toString() ??
+                                  item['username']?.toString() ??
+                                  'User');
                         final subtitle = isPet
                             ? '🐾 Pet · ${item['species'] ?? 'Animal'}${item['breed'] != null ? ' · ${item['breed']}' : ''}'
                             : '@${item['username'] ?? 'user'}';
@@ -634,7 +722,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                           onTap: () => _selectMention(item),
                           borderRadius: BorderRadius.circular(12),
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 6,
+                            ),
                             child: Row(
                               children: [
                                 CircleAvatar(
@@ -642,24 +733,40 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                                   backgroundColor: isPet
                                       ? AppColors.secondaryContainer
                                       : AppColors.primaryContainer,
-                                  backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
+                                  backgroundImage:
+                                      avatarUrl != null && avatarUrl.isNotEmpty
                                       ? CachedNetworkImageProvider(avatarUrl)
                                       : null,
                                   child: avatarUrl == null
                                       ? Icon(
                                           isPet ? Icons.pets : Icons.person,
                                           size: 14,
-                                          color: isPet ? AppColors.secondary : AppColors.primary,
+                                          color: isPet
+                                              ? AppColors.secondary
+                                              : AppColors.primary,
                                         )
                                       : null,
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                      Text(subtitle, style: const TextStyle(fontSize: 11, color: AppColors.outline)),
+                                      Text(
+                                        title,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      Text(
+                                        subtitle,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.outline,
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -683,21 +790,36 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   children: [
                     const Text(
                       'Tagged:',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.secondary),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.secondary,
+                      ),
                     ),
-                    ..._taggedPets.map((p) => Chip(
-                          avatar: const Icon(Icons.pets, size: 14, color: AppColors.primary),
-                          label: Text(p['name']?.toString() ?? 'Pet'),
-                          deleteIcon: const Icon(Icons.close, size: 14),
-                          onDeleted: () {
-                            setState(() {
-                              _taggedPets.removeWhere((item) => item['id'] == p['id']);
-                            });
-                          },
-                          backgroundColor: AppColors.surfaceContainerHigh,
-                          padding: const EdgeInsets.all(0),
-                          labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                        )),
+                    ..._taggedPets.map(
+                      (p) => Chip(
+                        avatar: const Icon(
+                          Icons.pets,
+                          size: 14,
+                          color: AppColors.primary,
+                        ),
+                        label: Text(p['name']?.toString() ?? 'Pet'),
+                        deleteIcon: const Icon(Icons.close, size: 14),
+                        onDeleted: () {
+                          setState(() {
+                            _taggedPets.removeWhere(
+                              (item) => item['id'] == p['id'],
+                            );
+                          });
+                        },
+                        backgroundColor: AppColors.surfaceContainerHigh,
+                        padding: const EdgeInsets.all(0),
+                        labelStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -708,15 +830,32 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
               padding: const EdgeInsets.only(bottom: 12),
               child: OutlinedButton.icon(
                 onPressed: _openPetPicker,
-                icon: const Icon(Icons.pets, size: 16, color: AppColors.primary),
+                icon: const Icon(
+                  Icons.pets,
+                  size: 16,
+                  color: AppColors.primary,
+                ),
                 label: Text(
-                  _taggedPets.isEmpty ? 'Tag Pet' : 'Tag More Pets (${_taggedPets.length})',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.primary),
+                  _taggedPets.isEmpty
+                      ? 'Tag Pet'
+                      : 'Tag More Pets (${_taggedPets.length})',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
                 ),
                 style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  side: BorderSide(
+                    color: AppColors.primary.withValues(alpha: 0.3),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                 ),
               ),
             ),
@@ -754,7 +893,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 height: 160,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
-                  itemCount: _mediaList.length + (_mediaList.length < _maxMediaCount ? 1 : 0),
+                  itemCount:
+                      _mediaList.length +
+                      (_mediaList.length < _maxMediaCount ? 1 : 0),
                   itemBuilder: (context, index) {
                     if (index < _mediaList.length) {
                       return _buildMediaItem(_mediaList[index], index);
@@ -780,10 +921,16 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                               Container(
                                 padding: const EdgeInsets.all(8),
                                 decoration: BoxDecoration(
-                                  color: AppColors.primaryContainer.withValues(alpha: 0.3),
+                                  color: AppColors.primaryContainer.withValues(
+                                    alpha: 0.3,
+                                  ),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(Icons.add, color: AppColors.primary, size: 22),
+                                child: const Icon(
+                                  Icons.add,
+                                  color: AppColors.primary,
+                                  size: 22,
+                                ),
                               ),
                               const SizedBox(height: 6),
                               const Text(
@@ -819,7 +966,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 borderRadius: BorderRadius.circular(16),
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 16,
+                    horizontal: 16,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.surfaceContainerLow,
                     borderRadius: BorderRadius.circular(16),
@@ -835,10 +985,17 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                         const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primary,
+                          ),
                         )
                       else
-                        const Icon(Icons.add_photo_alternate_rounded, color: AppColors.primary, size: 24),
+                        const Icon(
+                          Icons.add_photo_alternate_rounded,
+                          color: AppColors.primary,
+                          size: 24,
+                        ),
                       const SizedBox(width: 10),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -964,11 +1121,21 @@ class _PetPickerBottomSheetState extends State<_PetPickerBottomSheet> {
               children: [
                 const Text(
                   'Tag Pets in Post',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: AppColors.onSurface),
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.onSurface,
+                  ),
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(context, _selectedPets),
-                  child: const Text('Done', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
+                  child: const Text(
+                    'Done',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -981,7 +1148,10 @@ class _PetPickerBottomSheetState extends State<_PetPickerBottomSheet> {
                 prefixIcon: const Icon(Icons.search, size: 20),
                 filled: true,
                 fillColor: AppColors.surfaceContainerLow,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide.none,
@@ -991,45 +1161,64 @@ class _PetPickerBottomSheetState extends State<_PetPickerBottomSheet> {
             const SizedBox(height: 12),
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.primary,
+                      ),
+                    )
                   : _pets.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'No eligible pets found to tag',
-                            style: TextStyle(color: AppColors.outline),
-                          ),
-                        )
-                      : ListView.builder(
-                          itemCount: _pets.length,
-                          itemBuilder: (ctx, i) {
-                            final pet = _pets[i];
-                            final petId = pet['id'].toString();
-                            final isSelected = _selectedPets.any((p) => p['id'].toString() == petId);
-                            final avatarUrl = pet['avatar_url']?.toString();
+                  ? const Center(
+                      child: Text(
+                        'No eligible pets found to tag',
+                        style: TextStyle(color: AppColors.outline),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: _pets.length,
+                      itemBuilder: (ctx, i) {
+                        final pet = _pets[i];
+                        final petId = pet['id'].toString();
+                        final isSelected = _selectedPets.any(
+                          (p) => p['id'].toString() == petId,
+                        );
+                        final avatarUrl = pet['avatar_url']?.toString();
 
-                            return CheckboxListTile(
-                              value: isSelected,
-                              activeColor: AppColors.primary,
-                              onChanged: (_) => _togglePet(pet),
-                              secondary: CircleAvatar(
-                                radius: 18,
-                                backgroundColor: AppColors.primaryContainer,
-                                backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
-                                    ? CachedNetworkImageProvider(avatarUrl)
-                                    : null,
-                                child: avatarUrl == null ? const Icon(Icons.pets, size: 18, color: AppColors.primary) : null,
-                              ),
-                              title: Text(
-                                pet['name']?.toString() ?? 'Pet',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                              ),
-                              subtitle: Text(
-                                '${pet['species'] ?? ''}${pet['breed'] != null ? ' • ${pet['breed']}' : ''}',
-                                style: const TextStyle(fontSize: 12, color: AppColors.outline),
-                              ),
-                            );
-                          },
-                        ),
+                        return CheckboxListTile(
+                          value: isSelected,
+                          activeColor: AppColors.primary,
+                          onChanged: (_) => _togglePet(pet),
+                          secondary: CircleAvatar(
+                            radius: 18,
+                            backgroundColor: AppColors.primaryContainer,
+                            backgroundImage:
+                                avatarUrl != null && avatarUrl.isNotEmpty
+                                ? CachedNetworkImageProvider(avatarUrl)
+                                : null,
+                            child: avatarUrl == null
+                                ? const Icon(
+                                    Icons.pets,
+                                    size: 18,
+                                    color: AppColors.primary,
+                                  )
+                                : null,
+                          ),
+                          title: Text(
+                            pet['name']?.toString() ?? 'Pet',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          subtitle: Text(
+                            '${pet['species'] ?? ''}${pet['breed'] != null ? ' • ${pet['breed']}' : ''}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.outline,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
             ),
           ],
         ),

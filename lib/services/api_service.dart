@@ -7,8 +7,11 @@ import '../models/pet_model.dart';
 
 class ApiService {
   // 10.0.2.2 targets localhost from Android Emulator
-  static const String defaultBaseUrl = 'https://peto-web.onrender.com/api';
-  
+  static const String defaultBaseUrl = String.fromEnvironment(
+    'PETO_API_BASE_URL',
+    defaultValue: 'https://peto-web.onrender.com/api',
+  );
+
   static Function(String?)? onMaintenanceDetected;
 
   late final Dio _dio;
@@ -27,16 +30,22 @@ class ApiService {
       ),
     );
 
-    _dio.interceptors.add(
+    _dio.interceptors.add(  
       InterceptorsWrapper(
         onRequest: (options, handler) async {
           final token = await _storageService.getToken();
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }
-          final actingType = await _storageService.getString('active_acting_identity_type');
-          final actingId = await _storageService.getString('active_acting_identity_id');
-          if (actingType == 'BUSINESS' && actingId != null && actingId.isNotEmpty) {
+          final actingType = await _storageService.getString(
+            'active_acting_identity_type',
+          );
+          final actingId = await _storageService.getString(
+            'active_acting_identity_id',
+          );
+          if (actingType == 'BUSINESS' &&
+              actingId != null &&
+              actingId.isNotEmpty) {
             options.headers['x-acting-identity-type'] = 'BUSINESS';
             options.headers['x-acting-identity-id'] = actingId;
           }
@@ -64,9 +73,13 @@ class ApiService {
           // Detect Controlled Maintenance Mode (HTTP 503)
           if (error.response?.statusCode == 503) {
             final data = error.response?.data;
-            final isMaintenance = data is Map &&
+            final isMaintenance =
+                data is Map &&
                 (data['maintenance'] == true ||
-                    data['message']?.toString().toLowerCase().contains('maintenance') == true);
+                    data['message']?.toString().toLowerCase().contains(
+                          'maintenance',
+                        ) ==
+                        true);
             if (isMaintenance) {
               final msg = data['message']?.toString();
               onMaintenanceDetected?.call(msg);
@@ -126,15 +139,20 @@ class ApiService {
           receiveTimeout: const Duration(seconds: 20),
         ),
       );
-      final response = await rootDio.get('https://peto-web.onrender.com/health');
+      final response = await rootDio.get(
+        'https://peto-web.onrender.com/health',
+      );
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
         final isOk = data['success'] == true && data['status'] == 'OK';
         return {
           'isHealthy': isOk,
           'status': data['status']?.toString() ?? (isOk ? 'OK' : 'DEGRADED'),
-          'maintenance': data['maintenance'] == true || data['status'] == 'MAINTENANCE',
-          'message': data['message']?.toString() ?? (isOk ? 'API Server OK' : 'Scheduled maintenance underway'),
+          'maintenance':
+              data['maintenance'] == true || data['status'] == 'MAINTENANCE',
+          'message':
+              data['message']?.toString() ??
+              (isOk ? 'API Server OK' : 'Scheduled maintenance underway'),
           'timestamp': data['timestamp'],
         };
       }
@@ -158,20 +176,23 @@ class ApiService {
   // AUTH API (/api/auth)
   // ----------------------
   Future<Response> login(String email, String password) async {
-    return await _dio.post('/auth/login', data: {
-      'email': email,
-      'password': password,
-    });
+    return await _dio.post(
+      '/auth/login',
+      data: {'email': email, 'password': password},
+    );
   }
 
   Future<Response> register(Map<String, dynamic> data) async {
-    return await _dio.post('/auth/signup', data: {
-      'email': data['email'],
-      'password': data['password'],
-      'username': data['username'],
-      'fullName': data['fullName'] ?? data['username'] ?? '',
-      'full_name': data['full_name'] ?? data['username'] ?? '',
-    });
+    return await _dio.post(
+      '/auth/signup',
+      data: {
+        'email': data['email'],
+        'password': data['password'],
+        'username': data['username'],
+        'fullName': data['fullName'] ?? data['username'] ?? '',
+        'full_name': data['full_name'] ?? data['username'] ?? '',
+      },
+    );
   }
 
   Future<Response> forgotPassword(String email, {String? redirectTo}) async {
@@ -194,7 +215,10 @@ class ApiService {
   }
 
   Future<Response> checkUsername(String username) async {
-    return await _dio.get('/users/check-username', queryParameters: {'username': username});
+    return await _dio.get(
+      '/users/check-username',
+      queryParameters: {'username': username},
+    );
   }
 
   Future<Response> updateProfile(Map<String, dynamic> data) async {
@@ -231,8 +255,10 @@ class ApiService {
         ),
       );
 
-      if ((response.statusCode == 200 || response.statusCode == 201) && response.data != null) {
-        final avatarUrl = response.data['avatar_url'] ??
+      if ((response.statusCode == 200 || response.statusCode == 201) &&
+          response.data != null) {
+        final avatarUrl =
+            response.data['avatar_url'] ??
             response.data['avatarUrl'] ??
             response.data['data']?['avatar_url'] ??
             response.data['data']?['avatarUrl'];
@@ -245,14 +271,20 @@ class ApiService {
       if (fallback.success && fallback.mediaUrl != null) {
         return {'success': true, 'avatar_url': fallback.mediaUrl};
       }
-      return {'success': false, 'message': response.data?['message'] ?? 'Failed to upload avatar.'};
+      return {
+        'success': false,
+        'message': response.data?['message'] ?? 'Failed to upload avatar.',
+      };
     } catch (e) {
       debugPrint('Upload avatar error: $e. Trying media fallback...');
       final fallback = await uploadMediaFile(filePath);
       if (fallback.success && fallback.mediaUrl != null) {
         return {'success': true, 'avatar_url': fallback.mediaUrl};
       }
-      return {'success': false, 'message': fallback.errorMessage ?? 'Upload failed: $e'};
+      return {
+        'success': false,
+        'message': fallback.errorMessage ?? 'Upload failed: $e',
+      };
     }
   }
 
@@ -286,8 +318,10 @@ class ApiService {
         ),
       );
 
-      if ((response.statusCode == 200 || response.statusCode == 201) && response.data != null) {
-        final coverUrl = response.data['cover_url'] ??
+      if ((response.statusCode == 200 || response.statusCode == 201) &&
+          response.data != null) {
+        final coverUrl =
+            response.data['cover_url'] ??
             response.data['coverUrl'] ??
             response.data['data']?['cover_url'] ??
             response.data['data']?['coverUrl'];
@@ -300,14 +334,20 @@ class ApiService {
       if (fallback.success && fallback.mediaUrl != null) {
         return {'success': true, 'cover_url': fallback.mediaUrl};
       }
-      return {'success': false, 'message': response.data?['message'] ?? 'Failed to upload cover.'};
+      return {
+        'success': false,
+        'message': response.data?['message'] ?? 'Failed to upload cover.',
+      };
     } catch (e) {
       debugPrint('Upload cover error: $e. Trying media fallback...');
       final fallback = await uploadMediaFile(filePath);
       if (fallback.success && fallback.mediaUrl != null) {
         return {'success': true, 'cover_url': fallback.mediaUrl};
       }
-      return {'success': false, 'message': fallback.errorMessage ?? 'Upload failed: $e'};
+      return {
+        'success': false,
+        'message': fallback.errorMessage ?? 'Upload failed: $e',
+      };
     }
   }
 
@@ -353,12 +393,15 @@ class ApiService {
   // ----------------------
   // POSTS API (/api/posts)
   // ----------------------
-  Future<Response> getPosts({int page = 1, int limit = 7, String? category}) async {
-    return await _dio.get('/posts/feed', queryParameters: {
-      'page': page,
-      'limit': limit,
-      'category': ?category,
-    });
+  Future<Response> getPosts({
+    int page = 1,
+    int limit = 7,
+    String? category,
+  }) async {
+    return await _dio.get(
+      '/posts/feed',
+      queryParameters: {'page': page, 'limit': limit, 'category': ?category},
+    );
   }
 
   Future<Response> getMyPosts() async {
@@ -407,15 +450,16 @@ class ApiService {
     return await _dio.get('/posts/$postId/comments');
   }
 
-  Future<Response> createComment(String postId, String content, {String? parentCommentId}) async {
+  Future<Response> createComment(
+    String postId,
+    String content, {
+    String? parentCommentId,
+  }) async {
     final Map<String, dynamic> data = {'comment': content};
     if (parentCommentId != null && parentCommentId.isNotEmpty) {
       data['parent_comment_id'] = parentCommentId;
     }
-    return await _dio.post(
-      '/posts/$postId/comments',
-      data: data,
-    );
+    return await _dio.post('/posts/$postId/comments', data: data);
   }
 
   Future<Response> deleteComment(String commentId) async {
@@ -446,32 +490,39 @@ class ApiService {
     String? sort,
     int page = 1,
   }) async {
-    return await _dio.get('/communities', queryParameters: {
-      if (category != null && category.toLowerCase() != 'all') 'category': category,
-      if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
-      'sort': ?sort,
-      'page': page,
-      'limit': 20,
-    });
+    return await _dio.get(
+      '/communities',
+      queryParameters: {
+        if (category != null && category.toLowerCase() != 'all')
+          'category': category,
+        if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+        'sort': ?sort,
+        'page': page,
+        'limit': 20,
+      },
+    );
   }
 
   Future<Response> getCommunityDetail(String id) async {
     return await _dio.get('/communities/$id');
   }
 
-  Future<Response> getCommunityFeed(String id, {int page = 1, String sort = 'new'}) async {
-    return await _dio.get('/communities/$id/posts', queryParameters: {
-      'page': page,
-      'limit': 15,
-      'sort': sort,
-    });
+  Future<Response> getCommunityFeed(
+    String id, {
+    int page = 1,
+    String sort = 'new',
+  }) async {
+    return await _dio.get(
+      '/communities/$id/posts',
+      queryParameters: {'page': page, 'limit': 15, 'sort': sort},
+    );
   }
 
   Future<Response> getCommunityMembers(String id, {int page = 1}) async {
-    return await _dio.get('/communities/$id/members', queryParameters: {
-      'page': page,
-      'limit': 20,
-    });
+    return await _dio.get(
+      '/communities/$id/members',
+      queryParameters: {'page': page, 'limit': 20},
+    );
   }
 
   Future<Response> getCommunityRules(String id) async {
@@ -494,31 +545,47 @@ class ApiService {
     return await _dio.delete('/communities/$id/membership');
   }
 
-  Future<Response> changeMemberRole(String communityId, String targetUserId, String role) async {
-    return await _dio.patch('/communities/$communityId/members/$targetUserId/role', data: {
-      'role': role,
-    });
+  Future<Response> changeMemberRole(
+    String communityId,
+    String targetUserId,
+    String role,
+  ) async {
+    return await _dio.patch(
+      '/communities/$communityId/members/$targetUserId/role',
+      data: {'role': role},
+    );
   }
 
-  Future<Response> banMember(String communityId, String targetUserId, String reason) async {
-    return await _dio.post('/communities/$communityId/bans', data: {
-      'user_id': targetUserId,
-      'reason': reason,
-    });
+  Future<Response> banMember(
+    String communityId,
+    String targetUserId,
+    String reason,
+  ) async {
+    return await _dio.post(
+      '/communities/$communityId/bans',
+      data: {'user_id': targetUserId, 'reason': reason},
+    );
   }
 
   Future<Response> unbanMember(String communityId, String targetUserId) async {
     return await _dio.delete('/communities/$communityId/bans/$targetUserId');
   }
 
-  Future<Response> createCommunityRule(String communityId, String title, String description) async {
-    return await _dio.post('/communities/$communityId/rules', data: {
-      'title': title,
-      'description': description,
-    });
+  Future<Response> createCommunityRule(
+    String communityId,
+    String title,
+    String description,
+  ) async {
+    return await _dio.post(
+      '/communities/$communityId/rules',
+      data: {'title': title, 'description': description},
+    );
   }
 
-  Future<Response> deleteCommunityRule(String communityId, String ruleId) async {
+  Future<Response> deleteCommunityRule(
+    String communityId,
+    String ruleId,
+  ) async {
     return await _dio.delete('/communities/$communityId/rules/$ruleId');
   }
 
@@ -526,10 +593,10 @@ class ApiService {
   // NOTIFICATIONS API (/api/notifications)
   // ----------------------
   Future<Response> getNotifications({int page = 1, int limit = 20}) async {
-    return await _dio.get('/notifications', queryParameters: {
-      'page': page,
-      'limit': limit,
-    });
+    return await _dio.get(
+      '/notifications',
+      queryParameters: {'page': page, 'limit': limit},
+    );
   }
 
   Future<Response> getUnreadNotificationCount() async {
@@ -556,17 +623,21 @@ class ApiService {
     return await _dio.put('/notifications/settings', data: data);
   }
 
-  Future<Response> registerDeviceToken(String fcmToken, {String platform = 'android'}) async {
-    return await _dio.post('/notifications/device-token', data: {
-      'fcmToken': fcmToken,
-      'platform': platform,
-    });
+  Future<Response> registerDeviceToken(
+    String fcmToken, {
+    String platform = 'android',
+  }) async {
+    return await _dio.post(
+      '/notifications/device-token',
+      data: {'fcmToken': fcmToken, 'platform': platform},
+    );
   }
 
   Future<Response> unregisterDeviceToken(String fcmToken) async {
-    return await _dio.delete('/notifications/device-token', data: {
-      'fcmToken': fcmToken,
-    });
+    return await _dio.delete(
+      '/notifications/device-token',
+      data: {'fcmToken': fcmToken},
+    );
   }
 
   // ----------------------
@@ -619,11 +690,38 @@ class ApiService {
 
       final name = fileName ?? filePath.split('/').last.split('\\').last;
       final mediaType = _resolveMediaType(name, isVideo: isVideo);
+      // Android pickers commonly name ISO-BMFF video .3gp/.m4v although
+      // the backend's validated upload contract accepts video/mp4. Only use
+      // that MIME when the local container has the ftyp signature.
+      DioMediaType uploadType = mediaType;
+      if (isVideo &&
+          (name.toLowerCase().endsWith('.3gp') ||
+              name.toLowerCase().endsWith('.m4v'))) {
+        final header = await file
+            .openRead(0, 12)
+            .fold<List<int>>(<int>[], (bytes, chunk) => bytes..addAll(chunk));
+        if (header.length < 8 ||
+            String.fromCharCodes(header.sublist(4, 8)) != 'ftyp') {
+          return MediaUploadResult(
+            success: false,
+            errorMessage: 'Unsupported video format.',
+          );
+        }
+        uploadType = DioMediaType('video', 'mp4');
+      }
+
+      final size = await file.length();
+      if (size > (isVideo ? 200 : 30) * 1024 * 1024) {
+        return MediaUploadResult(
+          success: false,
+          errorMessage: 'Selected file is too large.',
+        );
+      }
 
       final multipartFile = await MultipartFile.fromFile(
         filePath,
         filename: name,
-        contentType: mediaType,
+        contentType: uploadType,
       );
 
       final formData = FormData();
@@ -639,24 +737,35 @@ class ApiService {
         ),
       );
 
-      if ((response.statusCode == 200 || response.statusCode == 201) && response.data != null) {
+      if ((response.statusCode == 200 || response.statusCode == 201) &&
+          response.data != null) {
         final data = response.data;
-        final mediaUrl = data['mediaUrl'] ??
+        final mediaUrl =
+            data['mediaUrl'] ??
             data['url'] ??
             (data['data'] is List && (data['data'] as List).isNotEmpty
                 ? ((data['data'] as List).first is Map
-                    ? ((data['data'] as List).first['url'] ?? (data['data'] as List).first['path'])
-                    : (data['data'] as List).first)
-                : (data['data'] is Map ? (data['data']['url'] ?? data['data']['path']) : null));
+                      ? ((data['data'] as List).first['url'] ??
+                            (data['data'] as List).first['path'])
+                      : (data['data'] as List).first)
+                : (data['data'] is Map
+                      ? (data['data']['url'] ?? data['data']['path'])
+                      : null));
 
-        final mediaId = data['mediaId'] ??
+        final mediaId =
+            data['mediaId'] ??
             (data['data'] is List && (data['data'] as List).isNotEmpty
                 ? ((data['data'] as List).first is Map
-                    ? (data['data'] as List).first['id']?.toString()
-                    : null)
-                : (data['data'] is Map ? data['data']['id']?.toString() : null));
+                      ? (data['data'] as List).first['id']?.toString()
+                      : null)
+                : (data['data'] is Map
+                      ? data['data']['id']?.toString()
+                      : null));
 
-        if (mediaUrl != null && mediaUrl.toString().isNotEmpty) {
+        if (mediaUrl != null &&
+            mediaUrl.toString().isNotEmpty &&
+            mediaId != null &&
+            mediaId.toString().isNotEmpty) {
           return MediaUploadResult(
             success: true,
             mediaUrl: mediaUrl.toString(),
@@ -665,15 +774,16 @@ class ApiService {
         }
       }
 
-      final msg = response.data is Map ? response.data['message'] : null;
       return MediaUploadResult(
         success: false,
-        errorMessage: msg?.toString() ?? 'Server rejected the file upload.',
+        errorMessage: isVideo
+            ? 'Video upload failed. Please try again.'
+            : 'Upload failed. Please try again.',
       );
     } catch (e) {
       String message = 'Upload failed';
       if (e is DioException) {
-        debugPrint('Upload media DioException: [${e.response?.statusCode}] ${e.response?.data}');
+        debugPrint('Media upload failed: stage=network status=${e.response?.statusCode}');
         if (e.response?.statusCode == 401) {
           message = 'Session expired. Please log in again.';
         } else if (e.response?.statusCode == 413) {
@@ -682,16 +792,13 @@ class ApiService {
             e.type == DioExceptionType.sendTimeout ||
             e.type == DioExceptionType.receiveTimeout) {
           message = 'Connection timed out while uploading. Please try again.';
-        } else if (e.response?.data is Map && e.response?.data['message'] != null) {
-          message = e.response!.data['message'].toString();
+        } else if (e.response?.statusCode == 400) {
+          message = 'Unsupported media format or invalid file.';
         }
       } else {
-        debugPrint('Upload media error: $e');
+        debugPrint('Media upload failed: stage=local-file');
       }
-      return MediaUploadResult(
-        success: false,
-        errorMessage: message,
-      );
+      return MediaUploadResult(success: false, errorMessage: message);
     }
   }
 
@@ -729,19 +836,20 @@ class ApiService {
         'statusCode': e.response?.statusCode,
       };
     } catch (e) {
-      return {
-        'success': false,
-        'message': e.toString(),
-      };
+      return {'success': false, 'message': e.toString()};
     }
   }
 
   /// Fetch active sponsored advertisements for feeds (supports both unified AdDecisionEngine and direct fallback)
-  Future<List<Map<String, dynamic>>> fetchFeedAds({String placement = 'FEED'}) async {
+  Future<List<Map<String, dynamic>>> fetchFeedAds({
+    String placement = 'FEED',
+  }) async {
     try {
       // 1. Try unified AdDecisionEngine first
       final decision = await fetchUnifiedAdDecision(placement: placement);
-      if (decision != null && decision['hasAd'] == true && decision['ad'] != null) {
+      if (decision != null &&
+          decision['hasAd'] == true &&
+          decision['ad'] != null) {
         final adData = Map<String, dynamic>.from(decision['ad']);
         adData['source'] = decision['source'] ?? adData['source'] ?? 'PETO';
         return [adData];
@@ -772,7 +880,9 @@ class ApiService {
     int? organicCount,
   }) async {
     try {
-      final device = Platform.isAndroid ? 'ANDROID' : (Platform.isIOS ? 'IOS' : 'WEB');
+      final device = Platform.isAndroid
+          ? 'ANDROID'
+          : (Platform.isIOS ? 'IOS' : 'WEB');
       final response = await _dio.get(
         '/ads/decision',
         queryParameters: {
@@ -781,7 +891,9 @@ class ApiService {
           'organicCount': ?organicCount,
         },
       );
-      if (response.statusCode == 200 && response.data != null && response.data['hasAd'] == true) {
+      if (response.statusCode == 200 &&
+          response.data != null &&
+          response.data['hasAd'] == true) {
         return Map<String, dynamic>.from(response.data);
       }
     } catch (_) {
@@ -794,7 +906,9 @@ class ApiService {
   Future<Map<String, dynamic>> fetchAdFeatures() async {
     try {
       final response = await _dio.get('/ads/features');
-      if (response.statusCode == 200 && response.data != null && response.data['features'] != null) {
+      if (response.statusCode == 200 &&
+          response.data != null &&
+          response.data['features'] != null) {
         return Map<String, dynamic>.from(response.data['features']);
       }
     } catch (_) {}
@@ -817,7 +931,9 @@ class ApiService {
     int? latencyMs,
   }) async {
     try {
-      final platform = Platform.isAndroid ? 'ANDROID' : (Platform.isIOS ? 'IOS' : 'WEB');
+      final platform = Platform.isAndroid
+          ? 'ANDROID'
+          : (Platform.isIOS ? 'IOS' : 'WEB');
       await _dio.post(
         '/ads/events',
         data: {
@@ -839,7 +955,10 @@ class ApiService {
   }
 
   /// Track ad impression
-  Future<void> trackAdImpression(String campaignId, {String? creativeId}) async {
+  Future<void> trackAdImpression(
+    String campaignId, {
+    String? creativeId,
+  }) async {
     try {
       await _dio.post(
         '/ads/$campaignId/impression',
@@ -902,8 +1021,12 @@ class ApiService {
   Future<PolicyModel?> fetchPolicyBySlug(String slug) async {
     try {
       final response = await _dio.get('/policies/$slug');
-      if (response.statusCode == 200 && response.data != null && response.data['data'] != null) {
-        return PolicyModel.fromJson(Map<String, dynamic>.from(response.data['data']));
+      if (response.statusCode == 200 &&
+          response.data != null &&
+          response.data['data'] != null) {
+        return PolicyModel.fromJson(
+          Map<String, dynamic>.from(response.data['data']),
+        );
       }
     } catch (e) {
       debugPrint('Error fetching policy $slug: $e');
@@ -913,7 +1036,9 @@ class ApiService {
 
   /// Get PDF download URL for policy
   String getPolicyPdfUrl(String slug) {
-    final base = _dio.options.baseUrl.isNotEmpty ? _dio.options.baseUrl : defaultBaseUrl;
+    final base = _dio.options.baseUrl.isNotEmpty
+        ? _dio.options.baseUrl
+        : defaultBaseUrl;
     return '$base/policies/$slug/pdf';
   }
 
@@ -925,10 +1050,7 @@ class ApiService {
     try {
       final response = await _dio.post(
         '/auth/change-password',
-        data: {
-          'currentPassword': currentPassword,
-          'newPassword': newPassword,
-        },
+        data: {'currentPassword': currentPassword, 'newPassword': newPassword},
       );
       if (response.data is Map<String, dynamic>) {
         return Map<String, dynamic>.from(response.data);
@@ -939,8 +1061,8 @@ class ApiService {
       final msg = (data is Map && data['message'] != null)
           ? data['message'].toString()
           : (data is Map && data['error'] != null)
-              ? data['error'].toString()
-              : (e.message ?? 'Failed to update password');
+          ? data['error'].toString()
+          : (e.message ?? 'Failed to update password');
       return {'success': false, 'message': msg};
     } catch (e) {
       return {'success': false, 'message': e.toString()};
@@ -984,7 +1106,8 @@ class ApiService {
       if (appData == null || appData['success'] != true) {
         return {
           'success': false,
-          'message': appData?['error'] ?? 'Failed to submit verification request',
+          'message':
+              appData?['error'] ?? 'Failed to submit verification request',
         };
       }
 
@@ -998,13 +1121,13 @@ class ApiService {
           'documentNumber': documentNumber,
           'countryCode': country,
           'isFront': 'true',
-          'document': await MultipartFile.fromFile(filePath, filename: fileName),
+          'document': await MultipartFile.fromFile(
+            filePath,
+            filename: fileName,
+          ),
         });
 
-        await _dio.post(
-          '/advertisers/verification/documents',
-          data: formData,
-        );
+        await _dio.post('/advertisers/verification/documents', data: formData);
       }
 
       return {
@@ -1017,8 +1140,8 @@ class ApiService {
       final msg = (data is Map && data['error'] != null)
           ? data['error'].toString()
           : (data is Map && data['message'] != null)
-              ? data['message'].toString()
-              : (e.message ?? 'Verification submission failed');
+          ? data['message'].toString()
+          : (e.message ?? 'Verification submission failed');
       return {'success': false, 'message': msg};
     } catch (e) {
       return {'success': false, 'message': e.toString()};
@@ -1030,9 +1153,13 @@ class ApiService {
     try {
       final response = await _dio.get(
         '/auth/google/url',
-        queryParameters: redirectUrl != null ? {'redirect_to': redirectUrl} : null,
+        queryParameters: redirectUrl != null
+            ? {'redirect_to': redirectUrl}
+            : null,
       );
-      if (response.statusCode == 200 && response.data != null && response.data['url'] != null) {
+      if (response.statusCode == 200 &&
+          response.data != null &&
+          response.data['url'] != null) {
         return response.data['url'].toString();
       }
     } catch (e) {
@@ -1049,10 +1176,7 @@ class ApiService {
     try {
       final response = await _dio.post(
         '/auth/google',
-        data: {
-          'token': token,
-          'refreshToken': refreshToken,
-        },
+        data: {'token': token, 'refreshToken': refreshToken},
       );
       if (response.data is Map<String, dynamic>) {
         return Map<String, dynamic>.from(response.data);
@@ -1167,7 +1291,9 @@ class ApiService {
         }
       }
 
-      if (response.statusCode == 200 && response.data != null && response.data['data'] != null) {
+      if (response.statusCode == 200 &&
+          response.data != null &&
+          response.data['data'] != null) {
         return Pet.fromJson(Map<String, dynamic>.from(response.data['data']));
       }
     } catch (e) {
@@ -1206,7 +1332,10 @@ class ApiService {
   }
 
   /// Update pet profile details
-  Future<Map<String, dynamic>> updatePet(String petId, Map<String, dynamic> petData) async {
+  Future<Map<String, dynamic>> updatePet(
+    String petId,
+    Map<String, dynamic> petData,
+  ) async {
     try {
       Response response;
       try {
@@ -1289,7 +1418,10 @@ class ApiService {
         if (list != null) {
           return list
               .whereType<Map>()
-              .map((inv) => PetPendingInvite.fromJson(Map<String, dynamic>.from(inv)))
+              .map(
+                (inv) =>
+                    PetPendingInvite.fromJson(Map<String, dynamic>.from(inv)),
+              )
               .toList();
         }
       }
@@ -1300,7 +1432,11 @@ class ApiService {
   }
 
   /// Respond to a pet parent invitation (Accept or Decline)
-  Future<bool> respondPetInvite(String inviteId, {String? petId, required bool accept}) async {
+  Future<bool> respondPetInvite(
+    String inviteId, {
+    String? petId,
+    required bool accept,
+  }) async {
     try {
       Response response;
       if (petId != null && petId.isNotEmpty) {
@@ -1385,10 +1521,7 @@ class ApiService {
         body['caption'] = caption;
       }
 
-      final response = await _dio.post(
-        '/pets/$petId/media',
-        data: body,
-      );
+      final response = await _dio.post('/pets/$petId/media', data: body);
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
       debugPrint('Error adding pet media: $e');
@@ -1412,7 +1545,8 @@ class ApiService {
     try {
       final response = await _dio.get('/pets/$petId/posts');
       if (response.statusCode == 200 && response.data != null) {
-        final List<dynamic>? list = response.data['posts'] ?? response.data['data'];
+        final List<dynamic>? list =
+            response.data['posts'] ?? response.data['data'];
         if (list != null) {
           return list;
         }
@@ -1452,7 +1586,10 @@ class ApiService {
     return null;
   }
 
-  Future<Map<String, dynamic>?> updateBusinessProfile(String businessId, Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>?> updateBusinessProfile(
+    String businessId,
+    Map<String, dynamic> data,
+  ) async {
     try {
       final response = await _dio.patch('/businesses/$businessId', data: data);
       if (response.statusCode == 200 && response.data != null) {
@@ -1471,7 +1608,10 @@ class ApiService {
       final formData = FormData.fromMap({
         'avatar': await MultipartFile.fromFile(file.path, filename: fileName),
       });
-      final response = await _dio.post('/businesses/$businessId/avatar', data: formData);
+      final response = await _dio.post(
+        '/businesses/$businessId/avatar',
+        data: formData,
+      );
       if (response.statusCode == 200 && response.data != null) {
         return response.data['avatar_url'] as String?;
       }
@@ -1488,7 +1628,10 @@ class ApiService {
       final formData = FormData.fromMap({
         'cover': await MultipartFile.fromFile(file.path, filename: fileName),
       });
-      final response = await _dio.post('/businesses/$businessId/cover', data: formData);
+      final response = await _dio.post(
+        '/businesses/$businessId/cover',
+        data: formData,
+      );
       if (response.statusCode == 200 && response.data != null) {
         return response.data['cover_url'] as String?;
       }
@@ -1499,14 +1642,19 @@ class ApiService {
     return null;
   }
 
-  Future<List<dynamic>> getBusinessPosts(String businessId, {int page = 1, int limit = 10}) async {
+  Future<List<dynamic>> getBusinessPosts(
+    String businessId, {
+    int page = 1,
+    int limit = 10,
+  }) async {
     try {
       final response = await _dio.get(
         '/businesses/$businessId/posts',
         queryParameters: {'page': page, 'limit': limit},
       );
       if (response.statusCode == 200 && response.data != null) {
-        final List<dynamic>? list = response.data['posts'] ?? response.data['data'];
+        final List<dynamic>? list =
+            response.data['posts'] ?? response.data['data'];
         return list ?? [];
       }
     } catch (e) {
@@ -1529,4 +1677,3 @@ class MediaUploadResult {
     this.errorMessage,
   });
 }
-
