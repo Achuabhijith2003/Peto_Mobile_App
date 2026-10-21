@@ -11,6 +11,7 @@ import '../../widgets/comments_bottom_sheet.dart';
 import '../../widgets/auth_prompt_bottom_sheet.dart';
 import '../posts/create_post_screen.dart';
 import '../notifications/notification_screen.dart';
+import '../../widgets/home_upload_queue.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -32,7 +33,10 @@ class _HomeScreenState extends State<HomeScreen> {
       Provider.of<PostProvider>(context, listen: false).fetchPosts();
       final auth = Provider.of<AuthProvider>(context, listen: false);
       if (auth.isAuthenticated) {
-        Provider.of<NotificationProvider>(context, listen: false).fetchUnreadCount();
+        Provider.of<NotificationProvider>(
+          context,
+          listen: false,
+        ).fetchUnreadCount();
       }
     });
   }
@@ -79,7 +83,11 @@ class _HomeScreenState extends State<HomeScreen> {
               width: 28,
               height: 28,
               fit: BoxFit.contain,
-              errorBuilder: (_, _, _) => const Icon(Icons.pets, color: AppColors.primaryContainer, size: 26),
+              errorBuilder: (_, _, _) => const Icon(
+                Icons.pets,
+                color: AppColors.primaryContainer,
+                size: 26,
+              ),
             ),
             const SizedBox(width: 8),
             const Text(
@@ -123,12 +131,18 @@ class _HomeScreenState extends State<HomeScreen> {
                       top: 8,
                       child: IgnorePointer(
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
                           decoration: const BoxDecoration(
                             color: AppColors.error,
                             shape: BoxShape.circle,
                           ),
-                          constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                          constraints: const BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
                           child: Text(
                             '${notifProvider.unreadCount > 99 ? '99+' : notifProvider.unreadCount}',
                             style: const TextStyle(
@@ -149,9 +163,15 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          final p1 = Provider.of<PostProvider>(context, listen: false).fetchPosts(refresh: true);
+          final p1 = Provider.of<PostProvider>(
+            context,
+            listen: false,
+          ).fetchPosts(refresh: true);
           if (authProvider.isAuthenticated) {
-            Provider.of<NotificationProvider>(context, listen: false).fetchUnreadCount();
+            Provider.of<NotificationProvider>(
+              context,
+              listen: false,
+            ).fetchUnreadCount();
           }
           await p1;
         },
@@ -160,8 +180,12 @@ class _HomeScreenState extends State<HomeScreen> {
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
+            const SliverToBoxAdapter(child: HomeUploadQueue()),
             SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16.0,
+                vertical: 8.0,
+              ),
               sliver: SliverToBoxAdapter(
                 child: Card(
                   child: InkWell(
@@ -226,14 +250,30 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               )
             else if (postProvider.posts.isEmpty)
-              const SliverFillRemaining(
+              SliverFillRemaining(
                 hasScrollBody: false,
                 child: Center(
                   child: Padding(
-                    padding: EdgeInsets.all(40),
-                    child: Text(
-                      'No posts found for this category.',
-                      style: TextStyle(color: AppColors.onSurfaceVariant),
+                    padding: const EdgeInsets.all(40),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          postProvider.feedError ??
+                              'No posts found for this category.',
+                          style: const TextStyle(
+                            color: AppColors.onSurfaceVariant,
+                          ),
+                        ),
+                        if (postProvider.feedError != null)
+                          TextButton(
+                            onPressed: () => postProvider.fetchPosts(
+                              refresh: true,
+                              category: postProvider.selectedCategory,
+                            ),
+                            child: const Text('Retry'),
+                          ),
+                      ],
                     ),
                   ),
                 ),
@@ -242,54 +282,51 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final post = postProvider.posts[index];
-                      final shouldShowAd = index > 0 && index % 4 == 3 && _feedAds.isNotEmpty;
-                      final adToShow = shouldShowAd
-                          ? _feedAds[(index ~/ 4) % _feedAds.length]
-                          : null;
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final post = postProvider.posts[index];
+                    final shouldShowAd =
+                        index > 0 && index % 4 == 3 && _feedAds.isNotEmpty;
+                    final adToShow = shouldShowAd
+                        ? _feedAds[(index ~/ 4) % _feedAds.length]
+                        : null;
 
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          PostCard(
-                            post: post,
-                            onLike: () {
-                              if (authProvider.isAuthenticated) {
-                                postProvider.toggleLike(post.id);
-                              } else {
-                                AuthPromptBottomSheet.show(
-                                  context,
-                                  actionTitle: 'Like Post',
-                                );
-                              }
-                            },
-                            onBookmark: () {
-                              if (authProvider.isAuthenticated) {
-                                postProvider.toggleBookmark(post.id);
-                              } else {
-                                AuthPromptBottomSheet.show(
-                                  context,
-                                  actionTitle: 'Save Post',
-                                );
-                              }
-                            },
-                            onComment: () {
-                              CommentsBottomSheet.show(
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        PostCard(
+                          post: post,
+                          onLike: () {
+                            if (authProvider.isAuthenticated) {
+                              postProvider.toggleLike(post.id);
+                            } else {
+                              AuthPromptBottomSheet.show(
                                 context,
-                                postId: post.id,
-                                postAuthorUsername: post.author.username,
+                                actionTitle: 'Like Post',
                               );
-                            },
-                          ),
-                          if (adToShow != null)
-                            SponsoredPostCard(ad: adToShow),
-                        ],
-                      );
-                    },
-                    childCount: postProvider.posts.length,
-                  ),
+                            }
+                          },
+                          onBookmark: () {
+                            if (authProvider.isAuthenticated) {
+                              postProvider.toggleBookmark(post.id);
+                            } else {
+                              AuthPromptBottomSheet.show(
+                                context,
+                                actionTitle: 'Save Post',
+                              );
+                            }
+                          },
+                          onComment: () {
+                            CommentsBottomSheet.show(
+                              context,
+                              postId: post.id,
+                              postAuthorUsername: post.author.username,
+                            );
+                          },
+                        ),
+                        if (adToShow != null) SponsoredPostCard(ad: adToShow),
+                      ],
+                    );
+                  }, childCount: postProvider.posts.length),
                 ),
               ),
               if (postProvider.isLoadingMore)
@@ -333,7 +370,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: AppColors.outlineVariant.withValues(alpha: 0.5),
+                          color: AppColors.outlineVariant.withValues(
+                            alpha: 0.5,
+                          ),
                         ),
                         boxShadow: [
                           BoxShadow(

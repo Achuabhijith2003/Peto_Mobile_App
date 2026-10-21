@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'storage_service.dart';
@@ -17,7 +18,12 @@ class ApiService {
   late final Dio _dio;
   final StorageService _storageService = StorageService();
 
-  ApiService({String? baseUrl}) {
+  ApiService({
+    String? baseUrl,
+    String? expectedOwnerId,
+    String? actingIdentityType,
+    String? actingIdentityId,
+  }) {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl ?? defaultBaseUrl,
@@ -30,10 +36,31 @@ class ApiService {
       ),
     );
 
-    _dio.interceptors.add(  
+    _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
           final token = await _storageService.getToken();
+          if (expectedOwnerId != null) {
+            String? owner;
+            try {
+              final claims = jsonDecode(
+                utf8.decode(
+                  base64Url.decode(base64Url.normalize(token!.split('.')[1])),
+                ),
+              );
+              owner = claims['sub']?.toString();
+            } catch (_) {}
+            if (owner != expectedOwnerId) {
+              return handler.reject(
+                DioException(
+                  requestOptions: options,
+                  type: DioExceptionType.cancel,
+                  error:
+                      'Sign in to the account that queued this post to resume uploading.',
+                ),
+              );
+            }
+          }
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }
@@ -43,11 +70,17 @@ class ApiService {
           final actingId = await _storageService.getString(
             'active_acting_identity_id',
           );
-          if (actingType == 'BUSINESS' &&
-              actingId != null &&
-              actingId.isNotEmpty) {
+          final resolvedType = expectedOwnerId != null
+              ? actingIdentityType
+              : actingType;
+          final resolvedId = expectedOwnerId != null
+              ? actingIdentityId
+              : actingId;
+          if (resolvedType == 'BUSINESS' &&
+              resolvedId != null &&
+              resolvedId.isNotEmpty) {
             options.headers['x-acting-identity-type'] = 'BUSINESS';
-            options.headers['x-acting-identity-id'] = actingId;
+            options.headers['x-acting-identity-id'] = resolvedId;
           }
 
           // Auto-detect dynamic timezone and locale country for localized ads & feed
@@ -87,6 +120,7 @@ class ApiService {
           }
 
           if (error.response?.statusCode == 401 &&
+              error.requestOptions.extra['authRetried'] != true &&
               !error.requestOptions.path.contains('/auth/login') &&
               !error.requestOptions.path.contains('/auth/signup') &&
               !error.requestOptions.path.contains('/auth/refresh')) {
@@ -111,12 +145,25 @@ class ApiService {
 
                   // Retry original request with new token
                   final opts = error.requestOptions;
+                  opts.extra['authRetried'] = true;
                   opts.headers['Authorization'] = 'Bearer $newToken';
+                  // Dio finalizes multipart streams on send; a token refresh
+                  // must retry with a fresh FormData stream.
+                  if (opts.data is FormData) {
+                    opts.data = (opts.data as FormData).clone();
+                  }
                   final cloneReq = await _dio.fetch(opts);
                   return handler.resolve(cloneReq);
                 }
-              } catch (_) {
-                await _storageService.clearAuthData();
+              } catch (refreshError) {
+                // A background retry must not sign out a newly selected account
+                // or erase credentials because of a temporary network failure.
+                if (refreshError is DioException &&
+                    refreshError.response?.statusCode == 401 &&
+                    error.requestOptions.headers['Authorization'] ==
+                        'Bearer ${await _storageService.getToken()}') {
+                  await _storageService.clearAuthData();
+                }
               }
             }
           }
@@ -667,10 +714,12 @@ class ApiService {
 
   Future<MediaUploadResult> uploadMediaFile(
     String filePath, {
+    String? clientMediaId,
     String? fileName,
     bool isVideo = false,
     void Function(int sent, int total)? onProgress,
   }) async {
+    var transferComplete = false;
     try {
       final token = await _storageService.getToken();
       if (token == null || token.isEmpty) {
@@ -678,6 +727,11 @@ class ApiService {
           success: false,
           errorMessage: 'Please log in to upload media.',
         );
+      }
+
+      if (clientMediaId != null) {
+        final existing = await getUploadedMedia(clientMediaId);
+        if (existing != null) return existing;
       }
 
       final file = File(filePath);
@@ -690,28 +744,43 @@ class ApiService {
 
       final name = fileName ?? filePath.split('/').last.split('\\').last;
       final mediaType = _resolveMediaType(name, isVideo: isVideo);
-      // Android pickers commonly name ISO-BMFF video .3gp/.m4v although
-      // the backend's validated upload contract accepts video/mp4. Only use
-      // that MIME when the local container has the ftyp signature.
+      // Match the backend's container detection rather than trusting picker
+      // filenames. Camera and gallery files can have missing or misleading extensions.
       DioMediaType uploadType = mediaType;
-      if (isVideo &&
-          (name.toLowerCase().endsWith('.3gp') ||
-              name.toLowerCase().endsWith('.m4v'))) {
+      if (isVideo || mediaType.type == 'video') {
         final header = await file
-            .openRead(0, 12)
+            .openRead(0, 32)
             .fold<List<int>>(<int>[], (bytes, chunk) => bytes..addAll(chunk));
-        if (header.length < 8 ||
-            String.fromCharCodes(header.sublist(4, 8)) != 'ftyp') {
+        final box = header.length >= 8
+            ? String.fromCharCodes(header.sublist(4, 8))
+            : '';
+        if (box == 'ftyp') {
+          final brand = header.length >= 12
+              ? String.fromCharCodes(header.sublist(8, 12))
+              : '';
+          uploadType = DioMediaType(
+            'video',
+            brand.startsWith('qt') ? 'quicktime' : 'mp4',
+          );
+        } else if (['moov', 'mdat', 'wide', 'skip'].contains(box)) {
+          uploadType = DioMediaType('video', 'quicktime');
+        } else if (header.length >= 4 &&
+            header[0] == 0x1a &&
+            header[1] == 0x45 &&
+            header[2] == 0xdf &&
+            header[3] == 0xa3) {
+          uploadType = DioMediaType('video', 'webm');
+        } else {
           return MediaUploadResult(
             success: false,
-            errorMessage: 'Unsupported video format.',
+            errorMessage:
+                'Unsupported video format. Choose an MP4, MOV or WebM video.',
           );
         }
-        uploadType = DioMediaType('video', 'mp4');
       }
 
       final size = await file.length();
-      if (size > (isVideo ? 200 : 30) * 1024 * 1024) {
+      if (size > (uploadType.type == 'video' ? 200 : 30) * 1024 * 1024) {
         return MediaUploadResult(
           success: false,
           errorMessage: 'Selected file is too large.',
@@ -725,12 +794,18 @@ class ApiService {
       );
 
       final formData = FormData();
+      if (clientMediaId != null) {
+        formData.fields.add(MapEntry('client_media_id', clientMediaId));
+      }
       formData.files.add(MapEntry('media', multipartFile));
 
       final response = await _dio.post(
         '/media/upload',
         data: formData,
-        onSendProgress: onProgress,
+        onSendProgress: (sent, total) {
+          if (total > 0 && sent >= total) transferComplete = true;
+          onProgress?.call(sent, total);
+        },
         options: Options(
           sendTimeout: const Duration(minutes: 5),
           receiveTimeout: const Duration(minutes: 5),
@@ -783,7 +858,17 @@ class ApiService {
     } catch (e) {
       String message = 'Upload failed';
       if (e is DioException) {
-        debugPrint('Media upload failed: stage=network status=${e.response?.statusCode}');
+        debugPrint(
+          'Media upload failed: type=${e.type.name} status=${e.response?.statusCode} '
+          'sendTimeout=${e.requestOptions.sendTimeout} receiveTimeout=${e.requestOptions.receiveTimeout}',
+        );
+        final responseData = e.response?.data;
+        if (e.type == DioExceptionType.cancel && e.error is String) {
+          message = e.error as String;
+        }
+        if (responseData is Map && responseData['message'] is String) {
+          message = responseData['message'] as String;
+        }
         if (e.response?.statusCode == 401) {
           message = 'Session expired. Please log in again.';
         } else if (e.response?.statusCode == 413) {
@@ -791,15 +876,66 @@ class ApiService {
         } else if (e.type == DioExceptionType.connectionTimeout ||
             e.type == DioExceptionType.sendTimeout ||
             e.type == DioExceptionType.receiveTimeout) {
-          message = 'Connection timed out while uploading. Please try again.';
-        } else if (e.response?.statusCode == 400) {
+          message =
+              'Upload timed out (${e.type.name}). The server may still be processing your video. Check your connection and try again.';
+        } else if (e.type == DioExceptionType.connectionError) {
+          message =
+              'Connection lost during upload. Keep the app open and check your network before trying again.';
+        } else if (e.response?.statusCode == 400 &&
+            message == 'Upload failed') {
           message = 'Unsupported media format or invalid file.';
         }
+      } else if (e is StateError) {
+        message = e.message.toString();
       } else {
         debugPrint('Media upload failed: stage=local-file');
       }
-      return MediaUploadResult(success: false, errorMessage: message);
+      return MediaUploadResult(
+        success: false,
+        errorMessage: message,
+        transferComplete: transferComplete,
+        retryable:
+            e is DioException &&
+            (e.response == null && e.type != DioExceptionType.cancel ||
+                (e.response?.statusCode ?? 0) >= 500 ||
+                e.response?.statusCode == 429),
+      );
     }
+  }
+
+  /// A completed upload can outlive its HTTP connection to the phone.
+  Future<MediaUploadResult?> getUploadedMedia(String id) async {
+    final response = await _dio.get(
+      '/media/status/$id',
+      options: Options(
+        receiveTimeout: const Duration(seconds: 15),
+        validateStatus: (code) => code == 200 || code == 404,
+      ),
+    );
+    final data = response.data;
+    if (response.statusCode == 404) {
+      if (data is! Map ||
+          data['success'] != false ||
+          data.containsKey('message')) {
+        throw StateError(
+          'Background upload recovery is unavailable. Update the backend before retrying.',
+        );
+      }
+      return null;
+    }
+    if (data is! Map ||
+        data['success'] != true ||
+        data['mediaId'] is! String ||
+        data['mediaUrl'] is! String) {
+      throw StateError(
+        'The server returned an invalid upload confirmation. Please try again.',
+      );
+    }
+    return MediaUploadResult(
+      success: true,
+      mediaId: data['mediaId'],
+      mediaUrl: data['mediaUrl'],
+    );
   }
 
   Future<Map<String, dynamic>> createReport({
@@ -1669,11 +1805,15 @@ class MediaUploadResult {
   final String? mediaUrl;
   final String? mediaId;
   final String? errorMessage;
+  final bool retryable;
+  final bool transferComplete;
 
   MediaUploadResult({
     required this.success,
     this.mediaUrl,
     this.mediaId,
     this.errorMessage,
+    this.retryable = false,
+    this.transferComplete = false,
   });
 }

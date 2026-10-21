@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import '../models/post_model.dart';
 import '../services/api_service.dart';
 
 class PostProvider extends ChangeNotifier {
-  final ApiService _apiService = ApiService();
+  final ApiService _apiService;
+
+  PostProvider({ApiService? apiService})
+    : _apiService = apiService ?? ApiService();
 
   List<Post> _posts = [];
   List<Post> _bookmarkedPosts = [];
@@ -14,6 +18,10 @@ class PostProvider extends ChangeNotifier {
   static const int _limit = 7;
   bool _isLoadingBookmarks = false;
   String? _selectedCategory;
+  String? _createPostError;
+  String? get createPostError => _createPostError;
+  String? _feedError;
+  String? get feedError => _feedError;
 
   List<Post> get posts => _posts;
   List<Post> get bookmarkedPosts => _bookmarkedPosts;
@@ -25,6 +33,11 @@ class PostProvider extends ChangeNotifier {
   String? get selectedCategory => _selectedCategory;
 
   Future<void> fetchPosts({String? category, bool refresh = false}) async {
+    final sameCategory = _selectedCategory == category;
+    final previousPage = _currentPage;
+    final previousHasMore = _hasMore;
+    if (!sameCategory) _posts = [];
+    _feedError = null;
     _isLoading = true;
     _currentPage = 1;
     _hasMore = true;
@@ -32,21 +45,30 @@ class PostProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await _apiService.getPosts(page: 1, limit: _limit, category: category);
+      final response = await _apiService.getPosts(
+        page: 1,
+        limit: _limit,
+        category: category,
+      );
       if (response.statusCode == 200 && response.data != null) {
-        final List rawList = response.data['posts'] ?? response.data['data'] ?? response.data ?? [];
+        final List rawList =
+            response.data['posts'] ??
+            response.data['data'] ??
+            response.data ??
+            [];
         _posts = rawList.map((item) => Post.fromJson(item)).toList();
         if (rawList.length < _limit) {
           _hasMore = false;
         }
       } else {
-        _posts = [];
-        _hasMore = false;
+        throw StateError('Feed request failed');
       }
     } catch (e) {
       debugPrint('Fetch posts API error: $e');
-      _posts = [];
-      _hasMore = false;
+      _feedError =
+          'Unable to refresh the feed. Please check your connection and try again.';
+      _currentPage = sameCategory ? previousPage : 1;
+      _hasMore = sameCategory ? previousHasMore : false;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -68,11 +90,19 @@ class PostProvider extends ChangeNotifier {
         category: _selectedCategory,
       );
       if (response.statusCode == 200 && response.data != null) {
-        final List rawList = response.data['posts'] ?? response.data['data'] ?? response.data ?? [];
-        final List<Post> newPosts = rawList.map((item) => Post.fromJson(item)).toList();
+        final List rawList =
+            response.data['posts'] ??
+            response.data['data'] ??
+            response.data ??
+            [];
+        final List<Post> newPosts = rawList
+            .map((item) => Post.fromJson(item))
+            .toList();
 
         final existingIds = _posts.map((p) => p.id).toSet();
-        final uniqueNew = newPosts.where((p) => !existingIds.contains(p.id)).toList();
+        final uniqueNew = newPosts
+            .where((p) => !existingIds.contains(p.id))
+            .toList();
         _posts.addAll(uniqueNew);
 
         _currentPage = nextPage;
@@ -97,7 +127,11 @@ class PostProvider extends ChangeNotifier {
     try {
       final response = await _apiService.getBookmarks();
       if (response.statusCode == 200 && response.data != null) {
-        final List rawList = response.data['bookmarks'] ?? response.data['data'] ?? response.data ?? [];
+        final List rawList =
+            response.data['bookmarks'] ??
+            response.data['data'] ??
+            response.data ??
+            [];
         _bookmarkedPosts = rawList.map((item) => Post.fromJson(item)).toList();
       } else {
         _bookmarkedPosts = [];
@@ -120,6 +154,7 @@ class PostProvider extends ChangeNotifier {
     List<String>? mentionedUserIds,
     List<String>? taggedPetIds,
   }) async {
+    _createPostError = null;
     try {
       final List<String> allMedia = [];
       if (mediaUrls != null && mediaUrls.isNotEmpty) {
@@ -149,8 +184,18 @@ class PostProvider extends ChangeNotifier {
         await fetchPosts(category: _selectedCategory, refresh: true);
         return true;
       }
+      _createPostError =
+          'Unable to publish post (HTTP ${response.statusCode}). Please try again.';
     } catch (e) {
       debugPrint('Create post API error: $e');
+      if (e is DioException) {
+        final data = e.response?.data;
+        _createPostError = data is Map && data['message'] is String
+            ? data['message'] as String
+            : 'Unable to publish post (${e.type.name}${e.response?.statusCode != null ? ', HTTP ${e.response!.statusCode}' : ''}). Please check your connection and try again.';
+      } else {
+        _createPostError = 'Unable to publish your post. Please try again.';
+      }
     }
     return false;
   }
@@ -161,17 +206,23 @@ class PostProvider extends ChangeNotifier {
 
     if (postIndex == -1 && bookmarkIndex == -1) return;
 
-    final target = postIndex != -1 ? _posts[postIndex] : _bookmarkedPosts[bookmarkIndex];
+    final target = postIndex != -1
+        ? _posts[postIndex]
+        : _bookmarkedPosts[bookmarkIndex];
     final newLikedState = !target.isLiked;
     final newCount = newLikedState
         ? target.likesCount + 1
         : (target.likesCount > 0 ? target.likesCount - 1 : 0);
 
     if (postIndex != -1) {
-      _posts[postIndex] = _posts[postIndex].copyWith(isLiked: newLikedState, likesCount: newCount);
+      _posts[postIndex] = _posts[postIndex].copyWith(
+        isLiked: newLikedState,
+        likesCount: newCount,
+      );
     }
     if (bookmarkIndex != -1) {
-      _bookmarkedPosts[bookmarkIndex] = _bookmarkedPosts[bookmarkIndex].copyWith(isLiked: newLikedState, likesCount: newCount);
+      _bookmarkedPosts[bookmarkIndex] = _bookmarkedPosts[bookmarkIndex]
+          .copyWith(isLiked: newLikedState, likesCount: newCount);
     }
     notifyListeners();
 
@@ -194,7 +245,10 @@ class PostProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> toggleBookmark(String postId, {bool? isCurrentlyBookmarked}) async {
+  Future<void> toggleBookmark(
+    String postId, {
+    bool? isCurrentlyBookmarked,
+  }) async {
     final postIndex = _posts.indexWhere((p) => p.id == postId);
     final bookmarkIndex = _bookmarkedPosts.indexWhere((p) => p.id == postId);
 
@@ -212,7 +266,9 @@ class PostProvider extends ChangeNotifier {
     final newBookmarked = !currentBookmarked;
 
     if (postIndex != -1) {
-      _posts[postIndex] = _posts[postIndex].copyWith(isBookmarked: newBookmarked);
+      _posts[postIndex] = _posts[postIndex].copyWith(
+        isBookmarked: newBookmarked,
+      );
     }
 
     if (newBookmarked) {
@@ -236,7 +292,9 @@ class PostProvider extends ChangeNotifier {
       debugPrint('Toggle bookmark API error: $e');
       // Revert on error
       if (postIndex != -1) {
-        _posts[postIndex] = _posts[postIndex].copyWith(isBookmarked: currentBookmarked);
+        _posts[postIndex] = _posts[postIndex].copyWith(
+          isBookmarked: currentBookmarked,
+        );
       }
       if (currentBookmarked) {
         if (postIndex != -1 && !_bookmarkedPosts.any((p) => p.id == postId)) {
@@ -256,8 +314,11 @@ class PostProvider extends ChangeNotifier {
     try {
       final response = await _apiService.getComments(postId);
       if (response.statusCode == 200 && response.data != null) {
-        final List rawList = response.data['comments'] ?? response.data['data'] ?? [];
-        return rawList.map((c) => PostComment.fromJson(c as Map<String, dynamic>)).toList();
+        final List rawList =
+            response.data['comments'] ?? response.data['data'] ?? [];
+        return rawList
+            .map((c) => PostComment.fromJson(c as Map<String, dynamic>))
+            .toList();
       }
     } catch (e) {
       debugPrint('Fetch comments API error: $e');
@@ -265,14 +326,23 @@ class PostProvider extends ChangeNotifier {
     return [];
   }
 
-  Future<PostComment?> addComment(String postId, String commentText, {String? parentCommentId}) async {
+  Future<PostComment?> addComment(
+    String postId,
+    String commentText, {
+    String? parentCommentId,
+  }) async {
     try {
-      final response = await _apiService.createComment(postId, commentText, parentCommentId: parentCommentId);
+      final response = await _apiService.createComment(
+        postId,
+        commentText,
+        parentCommentId: parentCommentId,
+      );
       if (response.statusCode == 200 || response.statusCode == 201) {
         // Increment comment counter in local posts
         _incrementCommentsCount(postId, 1);
 
-        final commentData = response.data['comment'] ?? response.data['data'] ?? response.data;
+        final commentData =
+            response.data['comment'] ?? response.data['data'] ?? response.data;
         if (commentData != null && commentData is Map<String, dynamic>) {
           return PostComment.fromJson(commentData);
         }
@@ -308,7 +378,9 @@ class PostProvider extends ChangeNotifier {
     if (bookmarkIndex != -1) {
       final current = _bookmarkedPosts[bookmarkIndex];
       final newCount = (current.commentsCount + delta).clamp(0, 999999);
-      _bookmarkedPosts[bookmarkIndex] = current.copyWith(commentsCount: newCount);
+      _bookmarkedPosts[bookmarkIndex] = current.copyWith(
+        commentsCount: newCount,
+      );
     }
 
     notifyListeners();
@@ -331,7 +403,10 @@ class PostProvider extends ChangeNotifier {
 
   Future<bool> updatePost(String postId, String newContent) async {
     try {
-      final response = await _apiService.updatePost(postId, {'text': newContent, 'content': newContent});
+      final response = await _apiService.updatePost(postId, {
+        'text': newContent,
+        'content': newContent,
+      });
       if (response.statusCode == 200) {
         final postIndex = _posts.indexWhere((p) => p.id == postId);
         if (postIndex != -1) {
@@ -351,7 +426,9 @@ class PostProvider extends ChangeNotifier {
           );
         }
 
-        final bookmarkIndex = _bookmarkedPosts.indexWhere((p) => p.id == postId);
+        final bookmarkIndex = _bookmarkedPosts.indexWhere(
+          (p) => p.id == postId,
+        );
         if (bookmarkIndex != -1) {
           final old = _bookmarkedPosts[bookmarkIndex];
           _bookmarkedPosts[bookmarkIndex] = Post(

@@ -1,0 +1,77 @@
+[33mcommit 316cb0aacf82e57250a7e13f6108fa731c6bb2df[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mdev[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/dev[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m
+Author: JR <achuabhijithjr@outlook.com>
+Date:   Sat Oct 17 14:44:44 2026 +0530
+
+    bug fix and remove heartbeat
+
+[33mcommit 25ff15e0ba9165e7f4c43517bda31ffcb9575cfe[m
+Author: JR <achuabhijithjr@outlook.com>
+Date:   Mon Oct 5 19:09:51 2026 +0530
+
+    Fix the bug in UI/UX and enhancesthhe UI
+
+[33mcommit 9b1943ab2f2773fd2416ef8fb94f4483ed4ffe38[m
+Author: JR <achuabhijithjr@outlook.com>
+Date:   Sun Sep 27 20:10:44 2026 +0530
+
+     update bug fix
+
+[33mcommit 8169b94cf71b9e5ac08197df87524f7d36ab23cd[m
+Author: JR <achuabhijithjr@outlook.com>
+Date:   Sat Sep 26 13:34:28 2026 +0530
+
+    pet profile bug fix and logo added
+
+[33mcommit ae6c362a0fdae3301a17e2e3342358a2b9b6c84a[m
+Author: JR <achuabhijithjr@outlook.com>
+Date:   Thu Sep 24 19:51:02 2026 +0530
+
+    UI element component update
+
+[33mcommit f6d6af387349e8c020c77fcb8a7f9abd40165c6a[m
+Author: JR <achuabhijithjr@outlook.com>
+Date:   Thu Sep 24 19:03:56 2026 +0530
+
+    fix bug in following button and add skeleton loading
+
+[33mcommit b81bb91155f40a489392286157556520c83332f5[m
+Author: JR <achuabhijithjr@outlook.com>
+Date:   Wed Sep 23 10:44:49 2026 +0530
+
+     pet intergration and modifcation
+
+[33mcommit df956efee28c010db64eaf47c59507793230dad8[m
+Author: JR <achuabhijithjr@outlook.com>
+Date:   Tue Sep 22 14:25:36 2026 +0530
+
+    pet profile and other upgrations
+
+[33mcommit 38e1e09720072502152ddce7007f92ffdbba5c9c[m
+Author: JR <achuabhijithjr@outlook.com>
+Date:   Sat Sep 19 14:34:10 2026 +0530
+
+    new nortification for apps
+
+[33mcommit 68a94fe13ed35baa3bd8ffaf7aa6b6e943113e38[m
+Author: JR <achuabhijithjr@outlook.com>
+Date:   Fri Sep 18 21:03:53 2026 +0530
+
+     Beta 1.1.0
+
+[33mcommit 87aff068e4a020a1e571f48dde06d8e425e71960[m
+Author: JR <achuabhijithjr@outlook.com>
+Date:   Tue Sep 15 12:45:43 2026 +0530
+
+    optimize user ecperinences
+
+[33mcommit aa0e2290fa0406bb15c76d0b2209bd2477e9c1ed[m
+Author: JR <achuabhijithjr@outlook.com>
+Date:   Sun Sep 6 21:48:21 2026 +0530
+
+    Beta version 1.0.0
+
+[33mcommit 1ab451309c6ee0a543b89597b964725f3ba4c110[m
+Author: JR <achuabhijithjr@outlook.com>
+Date:   Fri Sep 4 18:42:47 2026 +0530
+
+    a sample alph version 1.0.0

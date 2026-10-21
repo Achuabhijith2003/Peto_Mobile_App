@@ -28,6 +28,7 @@ class MediaUploadHelper {
     BuildContext context, {
     bool allowVideo = false,
     String title = 'Upload from Device',
+    bool uploadImmediately = true,
   }) async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     if (!authProvider.isAuthenticated) {
@@ -71,9 +72,15 @@ class MediaUploadHelper {
                     color: AppColors.primaryContainer.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.photo_library_outlined, color: AppColors.primary),
+                  child: const Icon(
+                    Icons.photo_library_outlined,
+                    color: AppColors.primary,
+                  ),
                 ),
-                title: const Text('Choose Photo from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
+                title: const Text(
+                  'Choose Photo from Gallery',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
                 onTap: () => Navigator.pop(ctx, 'photo_gallery'),
               ),
               ListTile(
@@ -83,9 +90,15 @@ class MediaUploadHelper {
                     color: AppColors.secondaryContainer.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.camera_alt_outlined, color: AppColors.secondary),
+                  child: const Icon(
+                    Icons.camera_alt_outlined,
+                    color: AppColors.secondary,
+                  ),
                 ),
-                title: const Text('Take Photo with Camera', style: TextStyle(fontWeight: FontWeight.w600)),
+                title: const Text(
+                  'Take Photo with Camera',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
                 onTap: () => Navigator.pop(ctx, 'photo_camera'),
               ),
               if (allowVideo) ...[
@@ -96,9 +109,15 @@ class MediaUploadHelper {
                       color: AppColors.tertiaryContainer.withValues(alpha: 0.2),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.video_library_outlined, color: AppColors.tertiary),
+                    child: const Icon(
+                      Icons.video_library_outlined,
+                      color: AppColors.tertiary,
+                    ),
                   ),
-                  title: const Text('Choose Video from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
+                  title: const Text(
+                    'Choose Video from Gallery',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   onTap: () => Navigator.pop(ctx, 'video_gallery'),
                 ),
                 ListTile(
@@ -108,9 +127,15 @@ class MediaUploadHelper {
                       color: Colors.deepPurple.withValues(alpha: 0.2),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.videocam_outlined, color: Colors.deepPurple),
+                    child: const Icon(
+                      Icons.videocam_outlined,
+                      color: Colors.deepPurple,
+                    ),
                   ),
-                  title: const Text('Record Video with Camera', style: TextStyle(fontWeight: FontWeight.w600)),
+                  title: const Text(
+                    'Record Video with Camera',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   onTap: () => Navigator.pop(ctx, 'video_camera'),
                 ),
               ],
@@ -127,9 +152,15 @@ class MediaUploadHelper {
 
     try {
       if (choice == 'photo_gallery') {
-        pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+        pickedFile = await _picker.pickImage(
+          source: ImageSource.gallery,
+          imageQuality: 85,
+        );
       } else if (choice == 'photo_camera') {
-        pickedFile = await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+        pickedFile = await _picker.pickImage(
+          source: ImageSource.camera,
+          imageQuality: 85,
+        );
       } else if (choice == 'video_gallery') {
         pickedFile = await _picker.pickVideo(source: ImageSource.gallery);
         isVideo = true;
@@ -141,13 +172,20 @@ class MediaUploadHelper {
       debugPrint('Error picking file: $e');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to pick file: $e'), backgroundColor: AppColors.error),
+          SnackBar(
+            content: Text('Failed to pick file: $e'),
+            backgroundColor: AppColors.error,
+          ),
         );
       }
       return null;
     }
 
     if (pickedFile == null) return null;
+
+    if (!uploadImmediately) {
+      return PickedMediaResult(localPath: pickedFile.path, isVideo: isVideo);
+    }
 
     if (!context.mounted) return null;
 
@@ -158,7 +196,10 @@ class MediaUploadHelper {
             const SizedBox(
               width: 18,
               height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -191,7 +232,8 @@ class MediaUploadHelper {
           ),
         );
       } else {
-        final errorMsg = result.errorMessage ?? 'Upload failed. Please try again.';
+        final errorMsg =
+            result.errorMessage ?? 'Upload failed. Please try again.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(errorMsg),
@@ -213,6 +255,7 @@ class MediaUploadHelper {
   static Future<List<PickedMediaResult>> pickMultiPhotosAndUpload(
     BuildContext context, {
     int maxCount = 5,
+    bool uploadImmediately = true,
   }) async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     if (!authProvider.isAuthenticated) {
@@ -227,6 +270,13 @@ class MediaUploadHelper {
 
     if (pickedFiles.isEmpty) return [];
 
+    if (!uploadImmediately) {
+      return pickedFiles
+          .take(maxCount)
+          .map((file) => PickedMediaResult(localPath: file.path))
+          .toList();
+    }
+
     if (!context.mounted) return [];
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -236,7 +286,10 @@ class MediaUploadHelper {
             const SizedBox(
               width: 18,
               height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
             ),
             const SizedBox(width: 14),
             Text('Uploading ${pickedFiles.length} photo(s)...'),
@@ -248,20 +301,27 @@ class MediaUploadHelper {
 
     final List<PickedMediaResult> results = [];
     for (final file in pickedFiles) {
-      final res = await _apiService.uploadMediaFile(file.path, fileName: file.name);
-      results.add(PickedMediaResult(
-        localPath: file.path,
-        uploadedUrl: res.mediaUrl,
-        mediaId: res.mediaId,
-        isVideo: false,
-      ));
+      final res = await _apiService.uploadMediaFile(
+        file.path,
+        fileName: file.name,
+      );
+      results.add(
+        PickedMediaResult(
+          localPath: file.path,
+          uploadedUrl: res.mediaUrl,
+          mediaId: res.mediaId,
+          isVideo: false,
+        ),
+      );
     }
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Uploaded ${results.where((r) => r.uploadedUrl != null).length} photo(s)!'),
+          content: Text(
+            'Uploaded ${results.where((r) => r.uploadedUrl != null).length} photo(s)!',
+          ),
           backgroundColor: AppColors.tertiary,
           duration: const Duration(seconds: 2),
         ),

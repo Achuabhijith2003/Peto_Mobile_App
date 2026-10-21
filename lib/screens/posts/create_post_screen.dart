@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../providers/post_provider.dart';
+import '../../providers/post_upload_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/verification_badge.dart';
 import '../../widgets/identity_switcher_bottom_sheet.dart';
@@ -10,6 +10,7 @@ import '../../services/media_upload_helper.dart';
 import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_button.dart';
+import '../../widgets/media_upload_progress.dart';
 
 class CreatePostScreen extends StatefulWidget {
   final String? communityId;
@@ -25,6 +26,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   final _contentController = TextEditingController();
   bool _isLoading = false;
   bool _isUploadingMedia = false;
+  double? _uploadProgress;
+  String _uploadLabel = '';
+  bool _processingMedia = false;
+  String? _submitError;
 
   final List<PickedMediaResult> _mediaList = [];
   static const int _maxMediaCount = 5;
@@ -145,14 +150,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       final results = await MediaUploadHelper.pickMultiPhotosAndUpload(
         context,
         maxCount: remainingSlots,
+        uploadImmediately: false,
       );
       if (mounted) {
         setState(() {
           _isUploadingMedia = false;
-          final valid = results.where(
-            (r) => r.uploadedUrl != null && r.uploadedUrl!.isNotEmpty,
-          );
-          _mediaList.addAll(valid);
+          _mediaList.addAll(results);
         });
       }
     } else if (choice == 'camera') {
@@ -161,13 +164,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         context,
         allowVideo: false,
         title: 'Take Photo',
+        uploadImmediately: false,
       );
       if (mounted) {
         setState(() {
           _isUploadingMedia = false;
-          if (result != null &&
-              result.uploadedUrl != null &&
-              result.uploadedUrl!.isNotEmpty) {
+          if (result != null) {
             _mediaList.add(result);
           }
         });
@@ -178,13 +180,12 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         context,
         allowVideo: true,
         title: 'Choose Video',
+        uploadImmediately: false,
       );
       if (mounted) {
         setState(() {
           _isUploadingMedia = false;
-          if (result != null &&
-              result.uploadedUrl != null &&
-              result.uploadedUrl!.isNotEmpty) {
+          if (result != null) {
             _mediaList.add(result);
           }
         });
@@ -193,6 +194,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   void _removeMediaAt(int index) {
+    if (_isLoading) return;
     setState(() {
       _mediaList.removeAt(index);
     });
@@ -337,37 +339,54 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   }
 
   void _submitPost() async {
-    final validMedia = _mediaList
-        .where((m) => m.uploadedUrl != null && m.uploadedUrl!.isNotEmpty)
-        .toList();
-    if (_contentController.text.trim().isEmpty && validMedia.isEmpty) return;
-
-    setState(() => _isLoading = true);
-    final postProvider = Provider.of<PostProvider>(context, listen: false);
-    // Link the media rows returned by /media/upload. URLs take a legacy path
-    // that can insert a second row without the processed video's thumbnail.
-    final mediaRefs = validMedia
-        .map((m) => m.mediaId ?? m.uploadedUrl!)
-        .toList();
-
-    final success = await postProvider.createPost(
-      _contentController.text.trim(),
-      mediaUrls: mediaRefs,
-      mediaUrl: mediaRefs.isNotEmpty ? mediaRefs.first : null,
-      communityId: widget.communityId,
-      petId: _taggedPets.isNotEmpty
-          ? _taggedPets.first['id'].toString()
-          : widget.petId,
-      mentionedUserIds: _mentionedUsers
-          .map((u) => u['id']!.toString())
-          .toList(),
-      taggedPetIds: _taggedPets.map((p) => p['id']!.toString()).toList(),
-    );
-
-    setState(() => _isLoading = false);
-
-    if (success && mounted) {
-      Navigator.pop(context);
+    if (_isLoading || _isUploadingMedia) return;
+    if (_contentController.text.trim().isEmpty && _mediaList.isEmpty) return;
+    final auth = context.read<AuthProvider>();
+    final owner = auth.user?.id;
+    if (owner == null) return;
+    setState(() {
+      _isLoading = true;
+      _submitError = null;
+      _uploadLabel = 'Saving your post for background upload...';
+      _uploadProgress = null;
+      _processingMedia = false;
+    });
+    try {
+      await context.read<PostUploadProvider>().enqueue(
+        ownerId: owner,
+        identityType: auth.activeIdentity.isBusiness ? 'BUSINESS' : 'PERSON',
+        identityId: auth.activeIdentity.isBusiness
+            ? auth.activeIdentity.id
+            : null,
+        media: List<PickedMediaResult>.of(_mediaList),
+        payload: {
+          'text': _contentController.text.trim(),
+          'content': _contentController.text.trim(),
+          'visibility': 'public',
+          'community_id': widget.communityId,
+          'pet_id': _taggedPets.isNotEmpty
+              ? _taggedPets.first['id'].toString()
+              : widget.petId,
+          'mentioned_user_ids': _mentionedUsers
+              .map((u) => u['id']!.toString())
+              .toList(),
+          'tagged_pet_ids': _taggedPets
+              .map((p) => p['id']!.toString())
+              .toList(),
+        },
+      );
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Post saved. Follow upload progress on Home.'),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) setState(() => _submitError = error.toString());
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -491,538 +510,564 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     final hasValidContent =
         _contentController.text.trim().isNotEmpty || _mediaList.isNotEmpty;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create Post'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: CustomButton(
-              text: 'Post',
-              isLoading: _isLoading || _isUploadingMedia,
-              onPressed: hasValidContent ? _submitPost : null,
+    return PopScope(
+      canPop: !_isLoading,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Create Post'),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: CustomButton(
+                text: 'Post',
+                isLoading: _isLoading || _isUploadingMedia,
+                onPressed: hasValidContent ? _submitPost : null,
+              ),
             ),
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Builder(
-              builder: (context) {
-                final authProvider = Provider.of<AuthProvider>(context);
-                final activeIdentity = authProvider.activeIdentity;
-                final hasBusinesses = authProvider.managedBusinesses.isNotEmpty;
+          ],
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_isLoading)
+                MediaUploadProgress(
+                  label: _uploadLabel,
+                  progress: _uploadProgress,
+                  processing: _processingMedia,
+                ),
+              if (_submitError != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    _submitError!,
+                    style: const TextStyle(color: AppColors.error),
+                  ),
+                ),
+              Builder(
+                builder: (context) {
+                  final authProvider = Provider.of<AuthProvider>(context);
+                  final activeIdentity = authProvider.activeIdentity;
+                  final hasBusinesses =
+                      authProvider.managedBusinesses.isNotEmpty;
 
-                if (!activeIdentity.isBusiness && !hasBusinesses) {
-                  return const SizedBox.shrink();
-                }
+                  if (!activeIdentity.isBusiness && !hasBusinesses) {
+                    return const SizedBox.shrink();
+                  }
 
-                final isBiz = activeIdentity.isBusiness;
+                  final isBiz = activeIdentity.isBusiness;
 
-                return InkWell(
-                  onTap: hasBusinesses
-                      ? () => IdentitySwitcherBottomSheet.show(context)
-                      : null,
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 14),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isBiz
-                          ? Colors.amber.shade50
-                          : AppColors.surfaceContainerLow,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: isBiz
-                            ? Colors.amber.shade200
-                            : AppColors.outlineVariant.withValues(alpha: 0.3),
+                  return InkWell(
+                    onTap: hasBusinesses
+                        ? () => IdentitySwitcherBottomSheet.show(context)
+                        : null,
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 14),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
                       ),
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 14,
-                          backgroundColor: isBiz
+                      decoration: BoxDecoration(
+                        color: isBiz
+                            ? Colors.amber.shade50
+                            : AppColors.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isBiz
                               ? Colors.amber.shade200
-                              : AppColors.primaryFixed,
-                          backgroundImage:
-                              activeIdentity.avatarUrl != null &&
-                                  activeIdentity.avatarUrl!.isNotEmpty
-                              ? CachedNetworkImageProvider(
-                                  activeIdentity.avatarUrl!,
-                                )
-                              : null,
-                          child:
-                              activeIdentity.avatarUrl == null ||
-                                  activeIdentity.avatarUrl!.isEmpty
-                              ? Text(
-                                  activeIdentity.name.isNotEmpty
-                                      ? activeIdentity.name[0].toUpperCase()
-                                      : (isBiz ? 'B' : 'U'),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: isBiz
-                                        ? Colors.amber.shade900
-                                        : AppColors.primary,
-                                  ),
-                                )
-                              : null,
+                              : AppColors.outlineVariant.withValues(alpha: 0.3),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  'Posting as: ${activeIdentity.name}',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    color: isBiz
-                                        ? Colors.amber.shade900
-                                        : AppColors.onSurface,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (isBiz) ...[
-                                const SizedBox(width: 4),
-                                const VerificationBadge(
-                                  badgeType: 'BUSINESS_VERIFIED',
-                                  size: 16,
-                                ),
-                              ],
-                            ],
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 14,
+                            backgroundColor: isBiz
+                                ? Colors.amber.shade200
+                                : AppColors.primaryFixed,
+                            backgroundImage:
+                                activeIdentity.avatarUrl != null &&
+                                    activeIdentity.avatarUrl!.isNotEmpty
+                                ? CachedNetworkImageProvider(
+                                    activeIdentity.avatarUrl!,
+                                  )
+                                : null,
+                            child:
+                                activeIdentity.avatarUrl == null ||
+                                    activeIdentity.avatarUrl!.isEmpty
+                                ? Text(
+                                    activeIdentity.name.isNotEmpty
+                                        ? activeIdentity.name[0].toUpperCase()
+                                        : (isBiz ? 'B' : 'U'),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: isBiz
+                                          ? Colors.amber.shade900
+                                          : AppColors.primary,
+                                    ),
+                                  )
+                                : null,
                           ),
-                        ),
-                        if (hasBusinesses) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isBiz
-                                  ? Colors.amber.shade200
-                                  : AppColors.surfaceContainerHigh,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
+                          const SizedBox(width: 8),
+                          Expanded(
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
-                                  Icons.swap_horiz_rounded,
-                                  size: 14,
-                                  color: isBiz
-                                      ? Colors.amber.shade900
-                                      : AppColors.onSurfaceVariant,
+                                Flexible(
+                                  child: Text(
+                                    'Posting as: ${activeIdentity.name}',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: isBiz
+                                          ? Colors.amber.shade900
+                                          : AppColors.onSurface,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                                const SizedBox(width: 2),
-                                Text(
-                                  'Switch',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
+                                if (isBiz) ...[
+                                  const SizedBox(width: 4),
+                                  const VerificationBadge(
+                                    badgeType: 'BUSINESS_VERIFIED',
+                                    size: 16,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          if (hasBusinesses) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isBiz
+                                    ? Colors.amber.shade200
+                                    : AppColors.surfaceContainerHigh,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.swap_horiz_rounded,
+                                    size: 14,
                                     color: isBiz
                                         ? Colors.amber.shade900
                                         : AppColors.onSurfaceVariant,
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    'Switch',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: isBiz
+                                          ? Colors.amber.shade900
+                                          : AppColors.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
-            TextField(
-              controller: _contentController,
-              maxLines: 5,
-              onChanged: _onTextChanged,
-              style: const TextStyle(fontSize: 16),
-              decoration: const InputDecoration(
-                hintText: "What's on your mind? Type @ to mention someone",
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                fillColor: Colors.transparent,
+                  );
+                },
               ),
-            ),
-
-            // Mention Suggestions Dropdown
-            if (_mentionSuggestions.isNotEmpty || _isLoadingMentions)
-              Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: AppColors.outline.withValues(alpha: 0.2),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      child: Text(
-                        'Mention suggestions',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.outline,
-                        ),
-                      ),
-                    ),
-                    if (_isLoadingMentions)
-                      const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: Center(
-                          child: SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        ),
-                      )
-                    else
-                      ..._mentionSuggestions.map((item) {
-                        final isPet = item['isPet'] == true;
-                        final avatarUrl = item['avatar_url']?.toString();
-                        final title = isPet
-                            ? (item['name']?.toString() ?? 'Pet')
-                            : (item['full_name']?.toString() ??
-                                  item['username']?.toString() ??
-                                  'User');
-                        final subtitle = isPet
-                            ? '🐾 Pet · ${item['species'] ?? 'Animal'}${item['breed'] != null ? ' · ${item['breed']}' : ''}'
-                            : '@${item['username'] ?? 'user'}';
-
-                        return InkWell(
-                          onTap: () => _selectMention(item),
-                          borderRadius: BorderRadius.circular(12),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 6,
-                            ),
-                            child: Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 14,
-                                  backgroundColor: isPet
-                                      ? AppColors.secondaryContainer
-                                      : AppColors.primaryContainer,
-                                  backgroundImage:
-                                      avatarUrl != null && avatarUrl.isNotEmpty
-                                      ? CachedNetworkImageProvider(avatarUrl)
-                                      : null,
-                                  child: avatarUrl == null
-                                      ? Icon(
-                                          isPet ? Icons.pets : Icons.person,
-                                          size: 14,
-                                          color: isPet
-                                              ? AppColors.secondary
-                                              : AppColors.primary,
-                                        )
-                                      : null,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        title,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                      Text(
-                                        subtitle,
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: AppColors.outline,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }),
-                  ],
+              TextField(
+                controller: _contentController,
+                maxLines: 5,
+                onChanged: _onTextChanged,
+                style: const TextStyle(fontSize: 16),
+                decoration: const InputDecoration(
+                  hintText: "What's on your mind? Type @ to mention someone",
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  fillColor: Colors.transparent,
                 ),
               ),
 
-            // Tagged Pets Badges
-            if (_taggedPets.isNotEmpty) ...[
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    const Text(
-                      'Tagged:',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.secondary,
-                      ),
-                    ),
-                    ..._taggedPets.map(
-                      (p) => Chip(
-                        avatar: const Icon(
-                          Icons.pets,
-                          size: 14,
-                          color: AppColors.primary,
-                        ),
-                        label: Text(p['name']?.toString() ?? 'Pet'),
-                        deleteIcon: const Icon(Icons.close, size: 14),
-                        onDeleted: () {
-                          setState(() {
-                            _taggedPets.removeWhere(
-                              (item) => item['id'] == p['id'],
-                            );
-                          });
-                        },
-                        backgroundColor: AppColors.surfaceContainerHigh,
-                        padding: const EdgeInsets.all(0),
-                        labelStyle: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
-            // Tag Pet Button
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: OutlinedButton.icon(
-                onPressed: _openPetPicker,
-                icon: const Icon(
-                  Icons.pets,
-                  size: 16,
-                  color: AppColors.primary,
-                ),
-                label: Text(
-                  _taggedPets.isEmpty
-                      ? 'Tag Pet'
-                      : 'Tag More Pets (${_taggedPets.length})',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(
-                    color: AppColors.primary.withValues(alpha: 0.3),
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // Attached Media Strip
-            if (_mediaList.isNotEmpty) ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Attached Media (${_mediaList.length}/$_maxMediaCount)',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: AppColors.onSurfaceVariant,
-                    ),
-                  ),
-                  if (_mediaList.length < _maxMediaCount)
-                    GestureDetector(
-                      onTap: _isUploadingMedia ? null : _showMediaPickerOptions,
-                      child: const Text(
-                        '+ Add More',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 160,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount:
-                      _mediaList.length +
-                      (_mediaList.length < _maxMediaCount ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (index < _mediaList.length) {
-                      return _buildMediaItem(_mediaList[index], index);
-                    }
-                    // "Add More" tile
-                    return GestureDetector(
-                      onTap: _isUploadingMedia ? null : _showMediaPickerOptions,
-                      child: Container(
-                        width: 110,
-                        margin: const EdgeInsets.only(right: 12),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          color: AppColors.surfaceContainerLow,
-                          border: Border.all(
-                            color: AppColors.primary.withValues(alpha: 0.3),
-                            style: BorderStyle.solid,
-                          ),
-                        ),
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primaryContainer.withValues(
-                                    alpha: 0.3,
-                                  ),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.add,
-                                  color: AppColors.primary,
-                                  size: 22,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              const Text(
-                                'Add Media',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.primary,
-                                ),
-                              ),
-                              Text(
-                                '${_maxMediaCount - _mediaList.length} left',
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  color: AppColors.outline,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            // Add Media Button (when empty or available)
-            if (_mediaList.isEmpty)
-              InkWell(
-                onTap: _isUploadingMedia ? null : _showMediaPickerOptions,
-                borderRadius: BorderRadius.circular(16),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 16,
-                    horizontal: 16,
-                  ),
+              // Mention Suggestions Dropdown
+              if (_mentionSuggestions.isNotEmpty || _isLoadingMentions)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: AppColors.surfaceContainerLow,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: AppColors.primaryContainer.withValues(alpha: 0.5),
-                      style: BorderStyle.solid,
+                      color: AppColors.outline.withValues(alpha: 0.2),
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (_isUploadingMedia)
-                        const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.primary,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        child: Text(
+                          'Mention suggestions',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.outline,
+                          ),
+                        ),
+                      ),
+                      if (_isLoadingMentions)
+                        const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Center(
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.primary,
+                              ),
+                            ),
                           ),
                         )
                       else
-                        const Icon(
-                          Icons.add_photo_alternate_rounded,
-                          color: AppColors.primary,
-                          size: 24,
+                        ..._mentionSuggestions.map((item) {
+                          final isPet = item['isPet'] == true;
+                          final avatarUrl = item['avatar_url']?.toString();
+                          final title = isPet
+                              ? (item['name']?.toString() ?? 'Pet')
+                              : (item['full_name']?.toString() ??
+                                    item['username']?.toString() ??
+                                    'User');
+                          final subtitle = isPet
+                              ? '🐾 Pet · ${item['species'] ?? 'Animal'}${item['breed'] != null ? ' · ${item['breed']}' : ''}'
+                              : '@${item['username'] ?? 'user'}';
+
+                          return InkWell(
+                            onTap: () => _selectMention(item),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 6,
+                              ),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 14,
+                                    backgroundColor: isPet
+                                        ? AppColors.secondaryContainer
+                                        : AppColors.primaryContainer,
+                                    backgroundImage:
+                                        avatarUrl != null &&
+                                            avatarUrl.isNotEmpty
+                                        ? CachedNetworkImageProvider(avatarUrl)
+                                        : null,
+                                    child: avatarUrl == null
+                                        ? Icon(
+                                            isPet ? Icons.pets : Icons.person,
+                                            size: 14,
+                                            color: isPet
+                                                ? AppColors.secondary
+                                                : AppColors.primary,
+                                          )
+                                        : null,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          title,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                        Text(
+                                          subtitle,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppColors.outline,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                    ],
+                  ),
+                ),
+
+              // Tagged Pets Badges
+              if (_taggedPets.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      const Text(
+                        'Tagged:',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.secondary,
                         ),
-                      const SizedBox(width: 10),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text(
-                            'Upload Media (Up to 5 Photos / Videos)',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                              color: AppColors.primary,
-                            ),
+                      ),
+                      ..._taggedPets.map(
+                        (p) => Chip(
+                          avatar: const Icon(
+                            Icons.pets,
+                            size: 14,
+                            color: AppColors.primary,
                           ),
-                          SizedBox(height: 2),
-                          Text(
-                            'Select multiple photos or add a video',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.outline,
-                            ),
+                          label: Text(p['name']?.toString() ?? 'Pet'),
+                          deleteIcon: const Icon(Icons.close, size: 14),
+                          onDeleted: () {
+                            setState(() {
+                              _taggedPets.removeWhere(
+                                (item) => item['id'] == p['id'],
+                              );
+                            });
+                          },
+                          backgroundColor: AppColors.surfaceContainerHigh,
+                          padding: const EdgeInsets.all(0),
+                          labelStyle: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
                           ),
-                        ],
+                        ),
                       ),
                     ],
                   ),
                 ),
+              ],
+
+              // Tag Pet Button
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: OutlinedButton.icon(
+                  onPressed: _openPetPicker,
+                  icon: const Icon(
+                    Icons.pets,
+                    size: 16,
+                    color: AppColors.primary,
+                  ),
+                  label: Text(
+                    _taggedPets.isEmpty
+                        ? 'Tag Pet'
+                        : 'Tag More Pets (${_taggedPets.length})',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(
+                      color: AppColors.primary.withValues(alpha: 0.3),
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                  ),
+                ),
               ),
-          ],
+              const SizedBox(height: 8),
+
+              // Attached Media Strip
+              if (_mediaList.isNotEmpty) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Attached Media (${_mediaList.length}/$_maxMediaCount)',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: AppColors.onSurfaceVariant,
+                      ),
+                    ),
+                    if (_mediaList.length < _maxMediaCount)
+                      GestureDetector(
+                        onTap: (_isLoading || _isUploadingMedia)
+                            ? null
+                            : _showMediaPickerOptions,
+                        child: const Text(
+                          '+ Add More',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 160,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount:
+                        _mediaList.length +
+                        (_mediaList.length < _maxMediaCount ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index < _mediaList.length) {
+                        return _buildMediaItem(_mediaList[index], index);
+                      }
+                      // "Add More" tile
+                      return GestureDetector(
+                        onTap: (_isLoading || _isUploadingMedia)
+                            ? null
+                            : _showMediaPickerOptions,
+                        child: Container(
+                          width: 110,
+                          margin: const EdgeInsets.only(right: 12),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            color: AppColors.surfaceContainerLow,
+                            border: Border.all(
+                              color: AppColors.primary.withValues(alpha: 0.3),
+                              style: BorderStyle.solid,
+                            ),
+                          ),
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryContainer
+                                        .withValues(alpha: 0.3),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.add,
+                                    color: AppColors.primary,
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                const Text(
+                                  'Add Media',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.primary,
+                                  ),
+                                ),
+                                Text(
+                                  '${_maxMediaCount - _mediaList.length} left',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: AppColors.outline,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // Add Media Button (when empty or available)
+              if (_mediaList.isEmpty)
+                InkWell(
+                  onTap: (_isLoading || _isUploadingMedia)
+                      ? null
+                      : _showMediaPickerOptions,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 16,
+                      horizontal: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: AppColors.primaryContainer.withValues(
+                          alpha: 0.5,
+                        ),
+                        style: BorderStyle.solid,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_isUploadingMedia)
+                          const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.primary,
+                            ),
+                          )
+                        else
+                          const Icon(
+                            Icons.add_photo_alternate_rounded,
+                            color: AppColors.primary,
+                            size: 24,
+                          ),
+                        const SizedBox(width: 10),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text(
+                              'Upload Media (Up to 5 Photos / Videos)',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Select multiple photos or add a video',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppColors.outline,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
