@@ -236,8 +236,22 @@ class ApiService {
         'email': data['email'],
         'password': data['password'],
         'username': data['username'],
-        'fullName': data['fullName'] ?? data['username'] ?? '',
-        'full_name': data['full_name'] ?? data['username'] ?? '',
+        'firstName': data['firstName'],
+        'lastName': data['lastName'],
+        'fullName': data['fullName'] ??
+            (data['firstName'] != null
+                ? '${data['firstName']} ${data['lastName'] ?? ''}'.trim()
+                : data['username'] ?? ''),
+        'full_name': data['full_name'] ??
+            data['fullName'] ??
+            (data['firstName'] != null
+                ? '${data['firstName']} ${data['lastName'] ?? ''}'.trim()
+                : data['username'] ?? ''),
+        'acceptedTerms': data['acceptedTerms'] ?? true,
+        'ageConfirmed': data['ageConfirmed'] ?? true,
+        'marketingConsent': data['marketingConsent'] ?? false,
+        if (data['dateOfBirth'] != null) 'dateOfBirth': data['dateOfBirth'],
+        if (data['date_of_birth'] != null) 'date_of_birth': data['date_of_birth'],
       },
     );
   }

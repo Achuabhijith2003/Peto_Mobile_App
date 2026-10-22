@@ -177,6 +177,38 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  String _humanizeAuthError(String? rawMsg) {
+    if (rawMsg == null || rawMsg.trim().isEmpty) {
+      return 'An unexpected error occurred. Please try again.';
+    }
+    final lower = rawMsg.toLowerCase();
+    if (lower.contains('already registered') || lower.contains('user already exists') || lower.contains('email already')) {
+      return 'An account with this email address already exists. Please sign in instead.';
+    }
+    if (lower.contains('username') && (lower.contains('taken') || lower.contains('already'))) {
+      return 'This username is already taken. Please choose another username.';
+    }
+    if (lower.contains('username must be') || lower.contains('invalid username')) {
+      return 'Username must be 3-20 characters long and contain only lowercase letters, numbers, and underscores.';
+    }
+    if (lower.contains('password') && (lower.contains('8 characters') || lower.contains('short') || lower.contains('least'))) {
+      return 'Password must be at least 8 characters long.';
+    }
+    if (lower.contains('13 years') || lower.contains('age')) {
+      return 'You must confirm that you are at least 13 years old to use Peto.';
+    }
+    if (lower.contains('terms') || lower.contains('privacy')) {
+      return 'You must affirmatively accept Peto\'s Terms of Service and Privacy Policy to continue.';
+    }
+    if (lower.contains('rate limit') || lower.contains('too many requests')) {
+      return 'Too many attempts. Please wait a moment and try again.';
+    }
+    if (lower.contains('invalid email') || lower.contains('email is invalid')) {
+      return 'Please enter a valid email address.';
+    }
+    return rawMsg;
+  }
+
   Future<bool> login(String email, String password) async {
     _isLoading = true;
     _errorMessage = null;
@@ -204,9 +236,16 @@ class AuthProvider extends ChangeNotifier {
           return true;
         }
       }
-      _errorMessage = response.data['message'] ?? 'Login failed';
+      _errorMessage = _humanizeAuthError(response.data['message']?.toString() ?? 'Login failed');
     } catch (e) {
-      _errorMessage = 'Invalid email or password';
+      if (e is DioException) {
+        final serverMsg = e.response?.data is Map
+            ? (e.response?.data['message']?.toString() ?? e.response?.data['error']?.toString())
+            : null;
+        _errorMessage = _humanizeAuthError(serverMsg ?? 'Invalid email or password');
+      } else {
+        _errorMessage = 'Invalid email or password';
+      }
     }
 
     _isLoading = false;
@@ -285,9 +324,15 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<bool> register({
-    required String username,
     required String email,
     required String password,
+    String? username,
+    String? firstName,
+    String? lastName,
+    String? fullName,
+    bool acceptedTerms = true,
+    bool ageConfirmed = true,
+    bool marketingConsent = false,
   }) async {
     _isLoading = true;
     _errorMessage = null;
@@ -295,9 +340,15 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       final response = await _apiService.register({
-        'username': username,
         'email': email,
         'password': password,
+        'username': username,
+        'firstName': firstName,
+        'lastName': lastName,
+        'fullName': fullName,
+        'acceptedTerms': acceptedTerms,
+        'ageConfirmed': ageConfirmed,
+        'marketingConsent': marketingConsent,
       });
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -320,15 +371,29 @@ class AuthProvider extends ChangeNotifier {
           notifyListeners();
           return true;
         }
-        // If session token was not returned (e.g. signup created user but requires login or next step), still consider signup successful
         _isLoading = false;
         notifyListeners();
         return true;
       }
-      _errorMessage = response.data['message'] ?? 'Registration failed';
+      _errorMessage = _humanizeAuthError(response.data['message']);
     } catch (e) {
       debugPrint('Register error: $e');
-      _errorMessage = 'Error creating account. Please check your details and try again.';
+      if (e is DioException) {
+        final serverMsg = e.response?.data is Map
+            ? (e.response?.data['message']?.toString() ?? e.response?.data['error']?.toString())
+            : null;
+        if (serverMsg != null && serverMsg.isNotEmpty) {
+          _errorMessage = _humanizeAuthError(serverMsg);
+        } else if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.receiveTimeout) {
+          _errorMessage = 'Connection timed out. Please check your internet connection.';
+        } else if (e.type == DioExceptionType.connectionError) {
+          _errorMessage = 'Unable to connect to Peto servers. Please check your internet connection.';
+        } else {
+          _errorMessage = 'Unable to complete registration. Please check your details and try again.';
+        }
+      } else {
+        _errorMessage = e.toString();
+      }
     }
 
     _isLoading = false;

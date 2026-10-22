@@ -523,13 +523,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
 
                     // Username
-                    Text(
-                      '@${user.username}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.secondary,
-                      ),
+                    Builder(
+                      builder: (ctx) {
+                        final displayUsername = user.username.isNotEmpty
+                            ? user.username
+                            : (user.email.isNotEmpty && user.email.contains('@') ? user.email.split('@').first : '');
+                        if (displayUsername.isEmpty) return const SizedBox.shrink();
+                        return Text(
+                          '@$displayUsername',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.secondary,
+                          ),
+                        );
+                      },
                     ),
 
                     // Bio

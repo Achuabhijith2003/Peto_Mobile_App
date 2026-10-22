@@ -14,11 +14,13 @@ import '../main_shell.dart';
 class CreateProfileScreen extends StatefulWidget {
   final String? prefilledUsername;
   final String? prefilledEmail;
+  final String? prefilledFullName;
 
   const CreateProfileScreen({
     super.key,
     this.prefilledUsername,
     this.prefilledEmail,
+    this.prefilledFullName,
   });
 
   @override
@@ -46,7 +48,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     super.initState();
     final user = Provider.of<AuthProvider>(context, listen: false).user;
     _usernameController.text = widget.prefilledUsername ?? user?.username ?? '';
-    _fullNameController.text = user?.fullName ?? '';
+    _fullNameController.text = widget.prefilledFullName ?? user?.fullName ?? '';
   }
 
   @override
@@ -84,11 +86,13 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
 
   Future<void> _pickDateOfBirth() async {
     final now = DateTime.now();
+    final maxAllowedDate = DateTime(now.year - 13, now.month, now.day);
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDateOfBirth ?? DateTime(now.year - 20),
+      initialDate: _selectedDateOfBirth ?? DateTime(now.year - 20, now.month, now.day),
       firstDate: DateTime(1920),
-      lastDate: now,
+      lastDate: maxAllowedDate,
+      helpText: 'Select your date of birth (13+ years required)',
     );
     if (picked != null) {
       setState(() => _selectedDateOfBirth = picked);
@@ -97,6 +101,31 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
 
   void _handleSubmit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (_selectedDateOfBirth == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Date of birth is required to verify your age (minimum 13 years old).'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    final now = DateTime.now();
+    int age = now.year - _selectedDateOfBirth!.year;
+    if (now.month < _selectedDateOfBirth!.month || (now.month == _selectedDateOfBirth!.month && now.day < _selectedDateOfBirth!.day)) {
+      age--;
+    }
+    if (age < 13) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You must be at least 13 years old to use Peto.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -111,8 +140,8 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
       'website': _websiteController.text.trim(),
       'phone': _phoneController.text.trim(),
       if (effectiveAvatar.isNotEmpty) 'avatar_url': effectiveAvatar,
-      if (_selectedDateOfBirth != null)
-        'dateOfBirth': DateFormat('yyyy-MM-dd').format(_selectedDateOfBirth!),
+      'dateOfBirth': DateFormat('yyyy-MM-dd').format(_selectedDateOfBirth!),
+      'date_of_birth': DateFormat('yyyy-MM-dd').format(_selectedDateOfBirth!),
     };
 
     final success = await authProvider.createProfile(profileData);
@@ -121,11 +150,24 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
       if (success) {
         await authProvider.refreshUser();
         if (mounted) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (_) => const MainShell()),
-            (route) => false,
-          );
+          if (authProvider.isAuthenticated) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const MainShell()),
+              (route) => false,
+            );
+          } else {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(
+                builder: (_) => LoginScreen(
+                  initialEmail: widget.prefilledEmail,
+                  successMessage: 'Profile created! Please sign in to continue.',
+                ),
+              ),
+              (route) => false,
+            );
+          }
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -140,6 +182,26 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
 
   void _skipForNow() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+    if (_selectedDateOfBirth == null &&
+        (authProvider.user?.dateOfBirth == null || authProvider.user!.dateOfBirth!.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select your date of birth to complete required age verification.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    if (_selectedDateOfBirth != null) {
+      await authProvider.createProfile({
+        'username': _usernameController.text.trim().toLowerCase(),
+        'dateOfBirth': DateFormat('yyyy-MM-dd').format(_selectedDateOfBirth!),
+        'date_of_birth': DateFormat('yyyy-MM-dd').format(_selectedDateOfBirth!),
+      });
+    }
+
     if (authProvider.isAuthenticated) {
       await authProvider.refreshUser();
       if (mounted) {
@@ -392,10 +454,11 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                             Text(
                               _selectedDateOfBirth != null
                                   ? DateFormat.yMMMd().format(_selectedDateOfBirth!)
-                                  : 'Date of Birth (Optional)',
+                                  : 'Date of Birth * (Required, 13+)',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: _selectedDateOfBirth != null ? AppColors.onSurface : AppColors.outline,
+                                fontWeight: _selectedDateOfBirth != null ? FontWeight.normal : FontWeight.w500,
                               ),
                             ),
                           ],
@@ -407,9 +470,9 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                 ),
                 const SizedBox(height: 32),
 
-                // Submit Button -> Moves to Login Screen
+                // Submit Button
                 CustomButton(
-                  text: 'Save & Go to Sign In',
+                  text: 'Complete Profile & Continue',
                   width: double.infinity,
                   isLoading: _isLoading,
                   onPressed: _handleSubmit,

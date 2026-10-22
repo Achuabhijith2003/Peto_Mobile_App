@@ -21,14 +21,27 @@ class UserProfile {
 
   factory UserProfile.fromJson(Map<String, dynamic>? json) {
     if (json == null) return UserProfile();
+    final meta = json['user_metadata'] is Map<String, dynamic>
+        ? json['user_metadata'] as Map<String, dynamic>
+        : (json['raw_user_meta_data'] is Map<String, dynamic>
+            ? json['raw_user_meta_data'] as Map<String, dynamic>
+            : null);
+
     return UserProfile(
-      fullName: json['full_name']?.toString() ?? json['fullName']?.toString(),
-      bio: json['bio']?.toString(),
-      location: json['location']?.toString(),
-      coverUrl: json['cover_url']?.toString() ?? json['banner_url']?.toString(),
-      website: json['website']?.toString(),
-      phone: json['phone']?.toString(),
-      dateOfBirth: json['date_of_birth']?.toString() ?? json['dateOfBirth']?.toString(),
+      fullName: json['full_name']?.toString() ??
+          json['fullName']?.toString() ??
+          meta?['full_name']?.toString() ??
+          meta?['fullName']?.toString() ??
+          meta?['name']?.toString(),
+      bio: json['bio']?.toString() ?? meta?['bio']?.toString(),
+      location: json['location']?.toString() ?? meta?['location']?.toString(),
+      coverUrl: json['cover_url']?.toString() ?? json['banner_url']?.toString() ?? meta?['cover_url']?.toString(),
+      website: json['website']?.toString() ?? meta?['website']?.toString(),
+      phone: json['phone']?.toString() ?? meta?['phone']?.toString(),
+      dateOfBirth: json['date_of_birth']?.toString() ??
+          json['dateOfBirth']?.toString() ??
+          meta?['date_of_birth']?.toString() ??
+          meta?['dateOfBirth']?.toString(),
     );
   }
 
@@ -111,21 +124,55 @@ class User {
         ? json['profile'] as Map<String, dynamic>
         : json;
 
+    final userMetadata = json['user_metadata'] is Map<String, dynamic>
+        ? json['user_metadata'] as Map<String, dynamic>
+        : (json['raw_user_meta_data'] is Map<String, dynamic>
+            ? json['raw_user_meta_data'] as Map<String, dynamic>
+            : null);
+
     final resolvedProfile = UserProfile.fromJson(profileData);
 
+    final rawUsername = _firstNonEmpty([
+      json['username'],
+      profileData['username'],
+      userMetadata?['username'],
+      userMetadata?['user_name'],
+      userMetadata?['preferred_username'],
+      profileData['user_metadata']?['username'],
+    ]);
+
+    final rawEmail = json['email']?.toString() ?? profileData['email']?.toString() ?? '';
+    final fallbackUsername = rawEmail.contains('@') ? rawEmail.split('@').first : '';
+
+    final resolvedUsername = (rawUsername != null && rawUsername.trim().isNotEmpty)
+        ? rawUsername.trim()
+        : fallbackUsername;
+
+    final resolvedFullName = _firstNonEmpty([
+      profileData['full_name'],
+      profileData['fullName'],
+      json['full_name'],
+      json['fullName'],
+      json['name'],
+      userMetadata?['full_name'],
+      userMetadata?['fullName'],
+      userMetadata?['name'],
+      profileData['user_metadata']?['full_name'],
+    ]);
+
     return User(
-      id: json['id']?.toString() ?? '',
-      email: json['email']?.toString() ?? '',
-      username: json['username']?.toString() ?? profileData['username']?.toString() ?? '',
-      fullName: profileData['full_name']?.toString() ??
-          profileData['fullName']?.toString() ??
-          json['full_name']?.toString() ??
-          json['name']?.toString(),
+      id: json['id']?.toString() ?? profileData['id']?.toString() ?? '',
+      email: rawEmail,
+      username: resolvedUsername,
+      fullName: resolvedFullName,
       avatarUrl: _firstNonEmpty([
         profileData['avatar_url'],
         profileData['avatarUrl'],
         json['avatar_url'],
         json['avatarUrl'],
+        userMetadata?['avatar_url'],
+        userMetadata?['avatarUrl'],
+        userMetadata?['picture'],
       ]),
       coverUrl: _firstNonEmpty([
         profileData['cover_url'],
@@ -133,6 +180,7 @@ class User {
         profileData['banner_url'],
         json['cover_url'],
         json['coverUrl'],
+        userMetadata?['cover_url'],
       ]),
       profile: resolvedProfile,
       postsCount: json['posts_count'] is int

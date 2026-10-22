@@ -362,11 +362,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _pickDateOfBirth() async {
     final now = DateTime.now();
+    final maxAllowedDate = DateTime(now.year - 13, now.month, now.day);
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDateOfBirth ?? DateTime(now.year - 20),
+      initialDate: _selectedDateOfBirth ?? DateTime(now.year - 20, now.month, now.day),
       firstDate: DateTime(1920),
-      lastDate: now,
+      lastDate: maxAllowedDate,
+      helpText: 'Select your date of birth (13+ years required)',
     );
     if (picked != null) {
       setState(() => _selectedDateOfBirth = picked);
@@ -383,6 +385,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ),
       );
       return;
+    }
+
+    if (_selectedDateOfBirth != null) {
+      final now = DateTime.now();
+      int age = now.year - _selectedDateOfBirth!.year;
+      if (now.month < _selectedDateOfBirth!.month || (now.month == _selectedDateOfBirth!.month && now.day < _selectedDateOfBirth!.day)) {
+        age--;
+      }
+      if (age < 13) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You must be at least 13 years old to use Peto.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        return;
+      }
     }
 
     setState(() => _isSaving = true);
@@ -753,7 +772,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                 Text(
                                   _selectedDateOfBirth != null
                                       ? DateFormat.yMMMd().format(_selectedDateOfBirth!)
-                                      : 'Date of Birth (Optional)',
+                                      : 'Date of Birth (13+ Required for Age Verification)',
                                   style: TextStyle(
                                     fontSize: 14,
                                     color: _selectedDateOfBirth != null ? AppColors.onSurface : AppColors.outline,
